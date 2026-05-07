@@ -31,8 +31,7 @@ const userSchema = new mongoose.Schema({
         required : true 
     },
     profile_img : {
-        type : String,
-        required : true 
+        type : String
     },
     is_verified : {
         type : Boolean,
@@ -45,12 +44,10 @@ const userSchema = new mongoose.Schema({
         required : true
     },
     last_login : {
-        type : Date,
-        required : true 
+        type : Date
     },
     address : {
-        type : String,
-        required : true 
+        type : String
     },
 },{
     timestamps : true   // it automatically adds created_at and updated_at
