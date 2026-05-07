@@ -1,11 +1,11 @@
-//This model will help to register doctor via frontend by admin only.
-
+// stores pharmacists details 
 const mongoose = require("mongoose");
 
-const doctorSchema = new mongoose.Schema({
-    doctor_code : {
+const pharmacistSchema = new mongoose.Schema({
+    pharmacist_code : {
         type : String,
-        required : true 
+        required : true,
+        unique : true 
     },
     first_name : {
         type : String,
@@ -26,55 +26,44 @@ const doctorSchema = new mongoose.Schema({
     },
     password : {
         type : String,
-        required : true
+        required : true 
     },
     phone : {
         type : String,
-        required : true,
-    },
-    profile_img : {
-        type : String,
         required : true 
     },
-    license_number : {
+    pharmacy_name : {
         type : String,
-        required : true 
-    },
-    department : {
-        type : String,
-        required : true 
-    },
-    specialization : {
-        type : String,
-        required : true 
+        required : true
     },
     qualification : {
         type : String,
         required : true 
     },
-    experience_year : {
-        type : Number,
-        required : true 
-    },
-    consult_fee : {
-        type : Number,
-        required : true 
-    },
-    consult_mode : {
+    license_no : {
         type : String,
-        enum : ["online", "offline", "both"]
+        required : true,
+        unique : true 
     },
-    available_days : [
-       {  
+    address : {
+        type : String,
+        required : true 
+    },
+    profile_img : {
+        type : String,
+        required : true 
+    },
+    working_days : [
+        {
+            type : String,
+            required : true 
+        }
+    ],
+    working_hour_start :{
         type : String,
         required : true
-       }
-    ],
-    work_time_start : {
-        type : String,
-        required : true 
     },
-    work_time_end : {
+    working_hour_end :{
         type : String,
         required : true
     },
@@ -82,17 +71,22 @@ const doctorSchema = new mongoose.Schema({
         type : String,
         required : true,
         enum : ["active", "inactive", "on-leave"],
-    },
-    last_login : {
-        type : Date
+        default : "active"
     },
     is_verified : {
         type : Boolean,
-        default : false,
-        required : true
+        required : true,
+        default : false 
+    },
+    joining_date : {
+        type : Date,
+        default : Date.now 
+    },
+    last_login : {
+        type : Date,
     },
 },{
     timestamps : true
 });
 
-module.exports = mongoose.model("Doctor", doctorSchema);
+module.exports = mongoose.model("Pharmacist", pharmacistSchema);

@@ -9,11 +9,6 @@ const patientSchema = new mongoose.Schema({
         ref : "User",         //referenced to user
         required : true
     },
-    doctor_id : {
-        type : mongoose.Schema.Types.ObjectId,
-        ref : "Doctor",       // referenced to doctor
-        required : true 
-    },
     first_name : {
         type : String,
         required : true, 
@@ -25,7 +20,7 @@ const patientSchema = new mongoose.Schema({
         trim : true
     },
     phone : {
-        type : Number,
+        type : String,
         required : true 
     },
     dob : {

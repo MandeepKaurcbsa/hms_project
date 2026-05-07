@@ -27,7 +27,29 @@ const userSchema = new mongoose.Schema({
         required : true 
     },
     phone : {
-        type : Number,
+        type : String,
+        required : true 
+    },
+    profile_img : {
+        type : String,
+        required : true 
+    },
+    is_verified : {
+        type : Boolean,
+        default : false 
+    },
+    status : {
+        type : String,
+        enum : ["active", "blocked"],
+        default : "active",
+        required : true
+    },
+    last_login : {
+        type : Date,
+        required : true 
+    },
+    address : {
+        type : String,
         required : true 
     },
 },{
