@@ -1,10 +1,10 @@
 //stores user data when any user registers themselves.
 //The database 
+//this model has 10 colums along with timestamp
 
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
-
     first_name : {
         type : String, 
         required: true,

@@ -1,11 +1,12 @@
 //This model will help to register doctor via frontend by admin only.
-
+//this doctor model consist of 20 columns along with timestamp.
 const mongoose = require("mongoose");
 
 const doctorSchema = new mongoose.Schema({
     doctor_code : {
         type : String,
-        required : true 
+        required : true,
+        unique : true 
     },
     first_name : {
         type : String,
@@ -36,7 +37,7 @@ const doctorSchema = new mongoose.Schema({
         type : String,
         required : true 
     },
-    license_number : {
+    license_no : {
         type : String,
         required : true 
     },
@@ -55,6 +56,10 @@ const doctorSchema = new mongoose.Schema({
     experience_year : {
         type : Number,
         required : true 
+    },
+    visit_address : {
+        type : String,
+        required : true
     },
     consult_fee : {
         type : Number,

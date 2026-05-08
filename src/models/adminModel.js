@@ -3,6 +3,11 @@
 const mongoose = require("mongoose");
 
 const adminSchema = new mongoose.Schema({
+    admin_code : {
+        type : String,
+        required : true,
+        unique : true
+    },
     fullname : {
         type : String,
         required : true,
@@ -20,9 +25,13 @@ const adminSchema = new mongoose.Schema({
         required : true
     },
     phone : {
-        type : Number,
+        type : String,
         required : true 
     },
+    profile_img : {
+        type : String,
+        required : true
+    }
 },{
     timestamps : true
 });

@@ -5,7 +5,8 @@ const mongoose = require("mongoose");
 const appointmentSchema = new mongoose.Schema({
     appointment_code : {
         type : String,
-        required : true 
+        required : true,
+        unique : true 
     },
     //user who booked appointment
     user_id : {

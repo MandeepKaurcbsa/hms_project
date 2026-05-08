@@ -1,4 +1,6 @@
-// stores pharmacists details 
+// stores pharmacists details
+//this model has 18 columns along with timestamp
+
 const mongoose = require("mongoose");
 
 const pharmacistSchema = new mongoose.Schema({
@@ -59,11 +61,11 @@ const pharmacistSchema = new mongoose.Schema({
             required : true 
         }
     ],
-    working_hour_start :{
+    work_time_start :{
         type : String,
         required : true
     },
-    working_hour_end :{
+    work_time_end :{
         type : String,
         required : true
     },

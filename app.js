@@ -15,9 +15,13 @@ const app = express();
 //middleware
 app.use(express.json());
 
-//routes
+//user routes
 const userRoute = require("./src/routes/userRoute");
 app.use("/user", userRoute);
+
+//admin route
+const adminRoute = require("./src/routes/adminRoute");
+app.use("/admin", adminRoute);
 
 //basic test route
 app.get("/", (req, res) => {
