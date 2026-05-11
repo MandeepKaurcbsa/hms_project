@@ -1,5 +1,5 @@
 //admin model
-
+//in this 6 columns are there along with timestamp
 const mongoose = require("mongoose");
 
 const adminSchema = new mongoose.Schema({
@@ -30,7 +30,6 @@ const adminSchema = new mongoose.Schema({
     },
     profile_img : {
         type : String,
-        required : true
     }
 },{
     timestamps : true

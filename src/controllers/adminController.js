@@ -92,7 +92,6 @@ exports.addDoctor = async (req, res) => {
             work_time_start,
             work_time_end,
             status,
-            last_login,
             is_verified
         } = req.body;
 
@@ -129,7 +128,6 @@ exports.addDoctor = async (req, res) => {
             work_time_start,
             work_time_end,
             status,
-            last_login,
             is_verified
         });
 
@@ -167,8 +165,7 @@ exports.addPharmacist = async (req,res) => {
             work_time_end,
             status,
             is_verified,
-            joining_date,
-            last_login
+            joining_date
         } = req.body;
 
         //checking if pharmacist exists 
@@ -200,8 +197,7 @@ exports.addPharmacist = async (req,res) => {
             work_time_end,
             status,
             is_verified,
-            joining_date,
-            last_login
+            joining_date
         });
 
         res.status(201).json({
