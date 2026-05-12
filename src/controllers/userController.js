@@ -77,10 +77,10 @@ exports.loginUser = async(req, res) => {
     }
 };
 
-//get user profile
-exports.getUser = async(req, res) => {
+//get user profile (single user that admin can fetch)
+exports.getSingleUser = async(req, res) => {
     try {
-        const user = await User.findById(req.user.id).select("-password");
+        const user = await User.findById(req.params.id).select("-password");
         if(!user){
             return res.status(400).json({message : "User Not Found"});
         }
@@ -94,4 +94,90 @@ exports.getUser = async(req, res) => {
         });
     }
 };
+
+//get user profile (logged in user can view their profile)
+exports.getUserProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select("-password");
+
+        if(!user){
+            res.status(400).json({
+                message : "User not found"
+            });
+        }
+
+        res.status(200).json({
+            message : "User fetched successfully",
+            user
+        })
+    } catch (error) {
+        res.status(500).json({
+            message : "Error fetching user",
+            error : error.message
+        });
+    }
+};
+
+//get all users (admin can access)
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find().select("-password");
+
+        res.status(200).json({
+            message : "Users fetched successfully",
+            totalUsers : users.length,
+            users 
+        })
+    } catch (error) {
+        res.status(500).json({
+            message : "Error fetching users",
+            error : error.message 
+        });
+    }
+};
+
+//update user profile 
+exports.updateUser = async (req, res) => {
+    try {
+        const {
+            first_name,
+            last_name,
+            address,
+            profile_img
+        } = req.body;
+
+        const updatedUser = await User.findByIdAndUpdate(
+            //user.id tells about the user id which has logged in
+            req.user.id,  
+            {
+                first_name,
+                last_name,
+                address,
+                profile_img
+            },
+            {
+                new : true,
+                runValidators : true
+            }
+        ).select("-password");
+
+        if(!updatedUser){
+            res.status(400).json({
+                message : "Usr not found"
+            });
+        }
+
+        res.status(200).json({
+            message : "User updated successfully",
+            updatedUser
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message : "Error updating user's profile",
+            error : error.message 
+        });
+    }
+};
+
 
