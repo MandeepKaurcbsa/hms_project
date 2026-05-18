@@ -29,7 +29,8 @@ exports.registerUser = async(req, res) => {
         });
 
         res.status(201).json({
-            message : "User Created Successfully"
+            message : "User Created Successfully",
+            user_id : `USR${String(user.user_id).padStart(3,"0")}`
         });
 
     } catch (error) {
