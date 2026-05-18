@@ -80,7 +80,7 @@ exports.loginUser = async(req, res) => {
 //get user profile (single user that admin can fetch)
 exports.getSingleUser = async(req, res) => {
     try {
-        const user = await User.findById(req.params.id).select("-password");
+        const user = await User.findById(req.params.id).select("-password -_id -__v");
         if(!user){
             return res.status(400).json({message : "User Not Found"});
         }
@@ -98,7 +98,7 @@ exports.getSingleUser = async(req, res) => {
 //get user profile (logged in user can view their profile)
 exports.getUserProfile = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select("-password");
+        const user = await User.findById(req.user.id).select("-password -_id -__v");
 
         if(!user){
             res.status(400).json({
@@ -121,7 +121,7 @@ exports.getUserProfile = async (req, res) => {
 //get all users (admin can access)
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await User.find().select("-password");
+        const users = await User.find().select("-password -_id -__v");
 
         res.status(200).json({
             message : "Users fetched successfully",
