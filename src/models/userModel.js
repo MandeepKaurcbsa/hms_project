@@ -12,7 +12,7 @@ const autoIncrement = require("mongoose-sequence")(mongoose);
 
 const userSchema = new mongoose.Schema({
     user_id : {
-        type : Number,
+        type : String,
         unique : true
     },
     first_name : {
@@ -69,8 +69,7 @@ userSchema.plugin(autoIncrement,{
     start_seq : 1000      // it will start the squence from 1000
 });
 
-userSchema.pre("save", function(next){
+userSchema.pre("save", function(){
     this.user_id = `USR${String(this.user_id).padStart(3,"0")}`;
-    next();
 })
 module.exports = mongoose.model("User", userSchema);
