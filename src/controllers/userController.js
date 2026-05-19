@@ -19,8 +19,27 @@ exports.registerUser = async(req, res) => {
         //help to hash password
         const hashPassword = await bcrypt.hash(password, 10);
 
+        //find last created user
+const lastUser = await User.findOne().sort({ createdAt : -1 });
+
+//default first id
+let newUserId = "USR001";
+
+if(lastUser && lastUser.user_id){
+    
+    //extract number from previous id
+    const lastNumber = parseInt(lastUser.user_id.replace("USR",""));
+
+    //increment number
+    const nextNumber = lastNumber + 1;
+
+    //make format like USR001
+    newUserId = `USR${String(nextNumber).padStart(3,"0")}`;
+}
+
         //creates user
         const user = await User.create({
+            user_id : newUserId,
             first_name,
             last_name,
             email,
@@ -30,7 +49,7 @@ exports.registerUser = async(req, res) => {
 
         res.status(201).json({
             message : "User Created Successfully",
-            user_id : `USR${String(user.user_id).padStart(3,"0")}`
+            user_id : user.user_id
         });
 
     } catch (error) {
@@ -102,7 +121,7 @@ exports.getUserProfile = async (req, res) => {
         const user = await User.findById(req.user.id).select("-password -_id -__v");
 
         if(!user){
-            res.status(400).json({
+            return res.status(400).json({
                 message : "User not found"
             });
         }
@@ -163,7 +182,7 @@ exports.updateUser = async (req, res) => {
         ).select("-password");
 
         if(!updatedUser){
-            res.status(400).json({
+            return res.status(400).json({
                 message : "Usr not found"
             });
         }
