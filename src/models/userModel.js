@@ -1,72 +1,69 @@
-//stores user data when any user registers themselves.
-//The database 
-//this model has 10 colums along with timestamp
-
 const mongoose = require("mongoose");
-
-
-//mongoose-sequence helps to store user id in a sequence and a format 
-//for making user id auto incrementing npm package is installed 
-//it can also be done using counter collection
-// const autoIncrement = require("mongoose-sequence")(mongoose);
+const generateCustomId = require("../utils/idgenerator"); // Make sure this path points to your idgenerator.js file
 
 const userSchema = new mongoose.Schema({
-    user_id : {
-        type : String,
-        unique : true
+    // Changed to String to store your formatted ID (e.g., "USER-011")
+    _id: {
+        type: String
     },
-    first_name : {
-        type : String, 
+    first_name: {
+        type: String,
         required: true,
-        trim : true  //removes extra space from beginning and at the end.
+        trim: true
     },
-    last_name : {
-        type : String,
-        required : true,
-        trim : true 
+    last_name: {
+        type: String,
+        required: true,
+        trim: true
     },
-    email : {
-        type : String,
-        required : true,
-        trim : true,
-        lowercase : true,
-        unique : true 
+    email: {
+        type: String,
+        required: true,
+        trim: true,
+        lowercase: true,
+        unique: true
     },
-    password : {
-        type : String,
-        required : true 
+    password: {
+        type: String,
+        required: true
     },
-    phone : {
-        type : String,
-        required : true 
+    phone: {
+        type: String,
+        required: true
     },
-    profile_img : {
-        type : String
+    profile_img: {
+        type: String
     },
-    is_verified : {
-        type : Boolean,
-        default : false 
+    is_verified: {
+        type: Boolean,
+        default: false
     },
-    status : {
-        type : String,
-        enum : ["active", "blocked"],
-        default : "active",
+    status: {
+        type: String,
+        enum: ["active", "blocked"],
+        default: "active"
     },
-    last_login : {
-        type : Date
+    last_login: {
+        type: Date
     },
-    address : {
-        type : String
-    },
-},{
-    timestamps : true   // it automatically adds created_at and updated_at
+    address: {
+        type: String
+    }
+}, {
+    timestamps: true
 });
 
+// GENERATE CUSTOM ID USING YOUR UTILITY
+userSchema.pre("save", async function () {
+    if (!this.isNew) return;
 
-// userSchema.plugin(autoIncrement,{
-//     inc_field : "user_id",  //this will increment the user_id field
-//     id : "userNumms",  //it will store id like : USR001 and so on 
-//     start_seq : 1000      // it will start the squence from 1000
-// });
+    try {
+        // Parameters: (sequenceId, entityPrefix, subPrefix, paddingLength)
+        // This will generate an ID like: USER-001
+        this._id = await generateCustomId("userNums", "USER", "", 3);
+    } catch (error) {
+        throw error; // Passes the custom generator error out to your controller
+    }
+});
 
 module.exports = mongoose.model("User", userSchema);
