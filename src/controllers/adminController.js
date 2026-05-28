@@ -29,7 +29,7 @@ exports.adminLogin = async (req, res) => {
 
         //generates token 
         const token = jwt.sign(
-            {id : admin_id},
+            {id : admin._id},
             process.env.JWT_SECRET,
             {expiresIn : "1d"}
         );
@@ -80,7 +80,7 @@ exports.addDoctor = async (req, res) => {
             password,
             phone,
             profile_img,
-            liscense_no,
+            license_no,
             department,
             specialization,
             qualification,
@@ -113,7 +113,7 @@ exports.addDoctor = async (req, res) => {
             first_name,
             last_name,
             email,
-            password,
+            password: hashed,
             phone,
             profile_img,
             license_no,
@@ -157,7 +157,7 @@ exports.addPharmacist = async (req,res) => {
             phone,
             pharmacy_name,
             qualification,
-            liscense_no,
+            license_no,
             address,
             profile_img,
             working_days,
@@ -185,7 +185,7 @@ exports.addPharmacist = async (req,res) => {
             first_name,
             last_name,
             email,
-            password,
+            password: hashed,
             phone,
             pharmacy_name,
             qualification,
@@ -206,7 +206,7 @@ exports.addPharmacist = async (req,res) => {
         });
 
     } catch (error) {
-        res.status(500).message({
+        res.status(500).json({
             message : "Error adding pharmacist",
             error : error.message
         });
