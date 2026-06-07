@@ -40,8 +40,10 @@ const userSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["active", "blocked"],
-        default: "active"
+        enum: ["active", "inactive", "blocked"],
+        default: "active"   //when the user is active 
+        //inactive     means soft delete when the user requests for account deletion or the account is deactivated 
+        //blocked     means the admin restrictly blocks the user because of the missactivity or something.
     },
     last_login: {
         type: Date
@@ -55,14 +57,21 @@ const userSchema = new mongoose.Schema({
 
 // GENERATE CUSTOM ID USING YOUR UTILITY
 userSchema.pre("save", async function () {
+
     if (!this.isNew) return;
 
     try {
-        // Parameters: (sequenceId, entityPrefix, subPrefix, paddingLength)
-        // This will generate an ID like: USER-001
-        this._id = await generateCustomId("userNums", "USER", "", 3);
+
+        this._id = await generateCustomId(
+            "userNums",
+            "USER",
+            "",
+            3
+        );
+
     } catch (error) {
-        throw error; // Passes the custom generator error out to your controller
+
+        throw error;
     }
 });
 

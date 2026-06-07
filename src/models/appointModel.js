@@ -1,27 +1,28 @@
 //This model will store appointment details, time and status between doctor and patient.  
 
 const mongoose = require("mongoose");
+const generateCustomId = require("../utils/idgenerator"); // Make sure this path points to your idgenerator.js file
+
 
 const appointmentSchema = new mongoose.Schema({
-    appointment_code : {
-        type : String,
-        required : true,
-        unique : true 
+    // Changed to String to store your formatted ID (e.g., "APPOINTMENT")
+    _id: {
+        type: String
     },
     //user who booked appointment
     user_id : {
-        type : mongoose.Schema.Types.ObjectId,
+        type : String,
         ref : "User",
         required : true
     },
     //patient for whom the appointment is booked 
     patient_id : {
-        type : mongoose.Schema.Types.ObjectId,
+        type : String,
         ref : "Patient",
         required : true 
     },
     doctor_id : {
-        type : mongoose.Schema.Types.ObjectId,
+        type : String,
         ref : "Doctor",
         required : true
     },
@@ -29,14 +30,14 @@ const appointmentSchema = new mongoose.Schema({
         type : Date,
         required : true 
     },
-    appointment_time : {
+    appointment_time : {                //"10:00"  it must be written like this only**
         type : String,
         required : true 
     },
     consult_mode :{
         type : String,
         enum : ["online", "offline"],
-        default : offline,
+        default : "offline",
         required : true
     },
     disease : {
@@ -57,7 +58,13 @@ const appointmentSchema = new mongoose.Schema({
     },
     payment_status : {
         type : String,
-        enum : ["pending", "paid", "failed"],
+        enum: [
+            "pending",
+            "paid",
+            "failed",
+            "refunded",
+            "partially_refunded"
+        ],     
         default : "pending",
         required : true
     },
@@ -78,19 +85,69 @@ const appointmentSchema = new mongoose.Schema({
     },
     notes : {
         type : String,
-        required : true 
     },
     cancelled_by : {
         type : String,
         enum : ["user", "doctor", "admin"],
-        required : true
     },
     cancel_reason : {
         type : String,
-        required : true
+    },
+    refund_status: {
+    type: String,
+    enum: [
+        "not_applicable",
+        "pending",
+        "refunded",
+        "failed"
+    ],
+    default: "not_applicable"
+    },
+
+    //     Status	Meaning
+    // not_applicable	No refund should be given
+    // pending	Refund is waiting to be processed
+    // refunded	Money has been successfully returned
+    // failed	Refund attempt failed
+
+        refund_percentage: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+
+    refund_amount: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    cancelled_at: {
+    type: Date
+    },
+    refund_processed_at: {
+    type: Date
     }
 },{
     timestamps : true 
+});
+
+appointmentSchema.pre("save", async function () {
+
+    if (!this.isNew) return;
+
+    try {
+
+        this._id = await generateCustomId(
+            "appointmentNums",
+            "APPOINTMENT",
+            "",
+            3
+        );
+
+    } catch (error) {
+
+        throw error;
+    }
 });
 
 module.exports = mongoose.model("Appointment", appointmentSchema);

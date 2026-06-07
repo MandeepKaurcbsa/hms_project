@@ -7,7 +7,7 @@ const generateCustomId = async (sequenceId, entityPrefix, subPrefix = "", paddin
             { $inc: { seq: 1 } },
             { 
                 // CHANGE THIS LINE: Replace new: true with the modern option
-                returnDocument: "after", 
+                new : true, 
                 upsert: true 
             }
         );

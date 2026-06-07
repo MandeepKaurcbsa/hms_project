@@ -23,6 +23,12 @@ app.use("/user", userRoute);
 const adminRoute = require("./src/routes/adminRoute");
 app.use("/admin", adminRoute);
 
+const doctorRoutes = require("./src/routes/doctorRoute");
+app.use("/doctor", doctorRoutes);
+
+const appointmentRoutes = require("./src/routes/appointRoute");
+app.use("/appointment", appointmentRoutes);
+
 //basic test route
 app.get("/", (req, res) => {
     res.send("Api is running...");

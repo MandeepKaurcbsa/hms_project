@@ -10,10 +10,14 @@ const {
     getSingleUser,
     getUserProfile,
     getAllUsers,
-    updateUser
+    updateUser,
+    inactivateUser,
+    blockUser,
+    activateUser
 } = require("../controllers/userController");
 
 const authMiddleware = require("../middleware/authMiddleware");
+const adminOnly = require("../middleware/adminMiddleware");
 
 //register user
 router.post("/register", registerUser);
@@ -25,12 +29,22 @@ router.post("/login", loginUser);
 router.get("/profile", authMiddleware, getUserProfile);
 
 //get all users
-router.get("/", getAllUsers);
+router.get("/all", authMiddleware, adminOnly, getAllUsers);
 
 //get single user(admin fetches this)
-router.get("/:id", getSingleUser);
+router.get("/:id", authMiddleware, adminOnly, getSingleUser);
 
 //update a users profile
-router.put("/:id", authMiddleware, updateUser);
+router.put("/update", authMiddleware, updateUser);
+
+//inactivates the user profile by admin(soft delete)
+router.put("/inactivate/:id", authMiddleware, adminOnly, inactivateUser);
+    
+//blocks user profile by admin(restricted by admin)
+router.put("/block/:id", authMiddleware, adminOnly, blockUser);
+
+//reactivates user profile by admin after inactivating/blocking
+router.put("/activate/:id", authMiddleware, adminOnly, activateUser);
+
 
 module.exports = router;

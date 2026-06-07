@@ -3,11 +3,11 @@
 
 const mongoose = require("mongoose");
 
+const generateCustomId = require("../utils/idGenerator");
+
 const pharmacistSchema = new mongoose.Schema({
-    pharmacist_code : {
-        type : String,
-        required : true,
-        unique : true 
+    _id : {
+        type : String
     },
     first_name : {
         type : String,
@@ -82,13 +82,25 @@ const pharmacistSchema = new mongoose.Schema({
     },
     joining_date : {
         type : Date,
-        default : Date.now 
+        default : Date.now  
     },
     last_login : {
         type : Date,
     },
 },{
     timestamps : true
+});
+
+pharmacistSchema.pre("save", async function () {
+
+    if (!this.isNew) return;
+
+    this._id = await generateCustomId(
+        "pharmacistNums",
+        "PHR",
+        "",
+        3
+    );
 });
 
 module.exports = mongoose.model("Pharmacist", pharmacistSchema);

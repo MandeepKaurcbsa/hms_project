@@ -7,56 +7,48 @@ const jwt = require("jsonwebtoken");
 
 //register user
 exports.registerUser = async(req, res) => {
+
     try {
-        const {first_name, last_name, email, password, phone} = req.body;
+
+        const {first_name, last_name, email, password, phone, profile_img, address, status, is_verified} = req.body;
 
         //check existing user
         const userExists = await User.findOne({email});
+
         if(userExists){
-            return res.status(400).json({message : "User already Exists"});
+            return res.status(400).json({
+                message : "User already Exists"
+            });
         }
 
-        //help to hash password
+        //hash password
         const hashPassword = await bcrypt.hash(password, 10);
 
-        //find last created user
-const lastUser = await User.findOne().sort({ createdAt : -1 });
-
-//default first id
-let newUserId = "USR001";
-
-if(lastUser && lastUser.user_id){
-    
-    //extract number from previous id
-    const lastNumber = parseInt(lastUser.user_id.replace("USR",""));
-
-    //increment number
-    const nextNumber = lastNumber + 1;
-
-    //make format like USR001
-    newUserId = `USR${String(nextNumber).padStart(3,"0")}`;
-}
-
-        //creates user
+        //create user
         const user = await User.create({
-            user_id : newUserId,
             first_name,
             last_name,
             email,
             password : hashPassword,
-            phone
+            phone,
+            profile_img,
+            address,
+            status,
+            is_verified
         });
 
         res.status(201).json({
             message : "User Created Successfully",
-            user_id : user.user_id
+            _id : user._id
         });
 
     } catch (error) {
+
         res.status(500).json({
             message : "Error registering User",
             error : error.message
         });
+
     }
 };
 
@@ -77,17 +69,44 @@ exports.loginUser = async(req, res) => {
         return res.status(400).json({message : "Invalid email or password"});
     }
 
+    if(user.status === "inactive"){
+    return res.status(403).json({
+        message: "Account is inactive. Please contact admin."
+    });
+}
+
+    if(user.status === "blocked"){
+    return res.status(403).json({
+        message: "Account has been blocked by admin."
+    });
+}
+
+    // update last login
+user.last_login = new Date();
+await user.save();
+
     //generates token 
     const token = jwt.sign(
-        {id : user._id},
+        {
+            id : user._id,
+            role : "user"
+        },
         process.env.JWT_SECRET,
         {expiresIn : "1d"}
     );
 
     res.json({
-        message : "Login Successfull",
-        token
-    });
+    success: true,
+    message : "Login Successful",
+    token,
+    user: {
+        id: user._id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        last_login: user.last_login
+    }
+});
 
     } catch (error) {
        res.status(500).json({
@@ -100,7 +119,7 @@ exports.loginUser = async(req, res) => {
 //get user profile (single user that admin can fetch)
 exports.getSingleUser = async(req, res) => {
     try {
-        const user = await User.findById(req.params.id).select("-password -_id -__v");
+        const user = await User.findById(req.params.id).select("-password");
         if(!user){
             return res.status(400).json({message : "User Not Found"});
         }
@@ -118,7 +137,7 @@ exports.getSingleUser = async(req, res) => {
 //get user profile (logged in user can view their profile)
 exports.getUserProfile = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select("-password -_id -__v");
+        const user = await User.findById(req.user.id).select("-password");
 
         if(!user){
             return res.status(400).json({
@@ -141,7 +160,7 @@ exports.getUserProfile = async (req, res) => {
 //get all users (admin can access)
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await User.find().select("-password -_id -__v");
+        const users = await User.find().select("-password");
 
         res.status(200).json({
             message : "Users fetched successfully",
@@ -183,7 +202,7 @@ exports.updateUser = async (req, res) => {
 
         if(!updatedUser){
             return res.status(400).json({
-                message : "Usr not found"
+                message : "User not found"
             });
         }
 
@@ -201,3 +220,89 @@ exports.updateUser = async (req, res) => {
 };
 
 
+// Inactivate User (Soft Delete)
+exports.inactivateUser = async (req, res) => {
+    try {
+
+        const user = await User.findByIdAndUpdate(
+            req.params.id,
+            { status: "inactive" },
+            { new: true }
+        ).select("-password");
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "User account inactivated successfully",
+            user
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error inactivating user",
+            error: error.message
+        });
+    }
+};
+
+// Block User
+exports.blockUser = async (req, res) => {
+    try {
+
+        const user = await User.findByIdAndUpdate(
+            req.params.id,
+            { status: "blocked" },
+            { new: true }
+        ).select("-password");
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "User account blocked successfully",
+            user
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error blocking user",
+            error: error.message
+        });
+    }
+};
+
+// Activate User  //this logic reactivates the blocked or inactivated user 
+exports.activateUser = async (req, res) => {
+    try {
+
+        const user = await User.findByIdAndUpdate(
+            req.params.id,
+            { status: "active" },
+            { new: true }
+        ).select("-password");
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "User account activated successfully",
+            user
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error activating user",
+            error: error.message
+        });
+    }
+};

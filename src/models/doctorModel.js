@@ -2,11 +2,11 @@
 //this doctor model consist of 20 columns along with timestamp.
 const mongoose = require("mongoose");
 
+const generateCustomId = require("../utils/idGenerator");
+
 const doctorSchema = new mongoose.Schema({
-    doctor_code : {
-        type : String,
-        required : true,
-        unique : true 
+    _id : {
+        type : String
     },
     first_name : {
         type : String,
@@ -86,7 +86,7 @@ const doctorSchema = new mongoose.Schema({
     status : {
         type : String,
         required : true,
-        enum : ["active", "inactive", "on-leave"],
+        enum : ["active", "inactive", "on-leave", "blocked"],
     },
     last_login : {
         type : Date
@@ -98,6 +98,18 @@ const doctorSchema = new mongoose.Schema({
     },
 },{
     timestamps : true
+});
+
+doctorSchema.pre("save", async function () {
+
+    if (!this.isNew) return;
+
+    this._id = await generateCustomId(
+        "doctorNums",
+        "DOC",
+        "",
+        3
+    );
 });
 
 module.exports = mongoose.model("Doctor", doctorSchema);

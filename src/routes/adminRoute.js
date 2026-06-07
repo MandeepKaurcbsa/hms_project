@@ -5,6 +5,7 @@ const express = require("express");
 const router = express.Router();
 
 const {
+    createAdmin,
     adminLogin,
     getAdminProfile,
     addDoctor,
@@ -12,6 +13,9 @@ const {
 } = require("../controllers/adminController");
 
 const authmiddleware = require("../middleware/authMiddleware");
+
+//create admin 
+router.post("/register", createAdmin);
 
 //admin login
 router.post("/login", adminLogin);

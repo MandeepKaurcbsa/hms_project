@@ -7,6 +7,51 @@ const Pharmacist = require("../models/pharmacistModel");
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+ 
+// Create Admin
+exports.createAdmin = async (req, res) => {
+    try {
+        const {
+            fullname,
+            email,
+            password,
+            phone,
+            profile_img
+        } = req.body;
+
+        // Check if admin already exists
+        const adminExists = await Admin.findOne({ email });
+
+        if (adminExists) {
+            return res.status(400).json({
+                message: "Admin already exists"
+            });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Create admin
+        const admin = await Admin.create({
+            fullname,
+            email,
+            password: hashedPassword,
+            phone,
+            profile_img
+        });
+
+        res.status(201).json({
+            message: "Admin created successfully",
+            admin
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error creating admin",
+            error: error.message
+        });
+    }
+};
 
 //Admin login 
 exports.adminLogin = async (req, res) => {
@@ -29,7 +74,10 @@ exports.adminLogin = async (req, res) => {
 
         //generates token 
         const token = jwt.sign(
-            {id : admin_id},
+            {
+                id : admin._id,
+                role : "admin"
+            },
             process.env.JWT_SECRET,
             {expiresIn : "1d"}
         );
@@ -73,14 +121,13 @@ exports.getAdminProfile = async (req, res) => {
 exports.addDoctor = async (req, res) => {
     try {
         const {
-            doctor_code,
             first_name,
             last_name,
             email,
             password,
             phone,
             profile_img,
-            liscense_no,
+            license_no,
             department,
             specialization,
             qualification,
@@ -109,11 +156,10 @@ exports.addDoctor = async (req, res) => {
         
         //create doctor
         const doctor = await Doctor.create({
-            doctor_code,
             first_name,
             last_name,
             email,
-            password,
+            password : hashed,
             phone,
             profile_img,
             license_no,
@@ -133,7 +179,7 @@ exports.addDoctor = async (req, res) => {
 
         res.status(201).json({
             message : "Doctor added successfully",
-            doctor
+            _id : doctor._id
         });
 
     } catch (error) {
@@ -149,7 +195,6 @@ exports.addDoctor = async (req, res) => {
 exports.addPharmacist = async (req,res) => {
     try {
         const {
-            pharmacist_code,
             first_name,
             last_name,
             email,
@@ -157,15 +202,14 @@ exports.addPharmacist = async (req,res) => {
             phone,
             pharmacy_name,
             qualification,
-            liscense_no,
+            license_no,
             address,
             profile_img,
             working_days,
             work_time_start,
             work_time_end,
             status,
-            is_verified,
-            joining_date
+            is_verified
         } = req.body;
 
         //checking if pharmacist exists 
@@ -181,11 +225,10 @@ exports.addPharmacist = async (req,res) => {
 
         //create pharmacist
         const pharmacist = await Pharmacist.create({
-            pharmacist_code,
             first_name,
             last_name,
             email,
-            password,
+            password : hashed,
             phone,
             pharmacy_name,
             qualification,
@@ -196,17 +239,16 @@ exports.addPharmacist = async (req,res) => {
             work_time_start,
             work_time_end,
             status,
-            is_verified,
-            joining_date
+            is_verified
         });
 
         res.status(201).json({
             message : "Pharmacist added Successfully",
-            pharmacist
+            _id : pharmacist._id
         });
 
     } catch (error) {
-        res.status(500).message({
+        res.status(500).json({
             message : "Error adding pharmacist",
             error : error.message
         });
