@@ -12,7 +12,7 @@ const {
     addPharmacist
 } = require("../controllers/adminController");
 
-const authmiddleware = require("../middleware/authMiddleware");
+const {authMiddleware} = require("../middleware/authMiddleware");
 
 //create admin 
 router.post("/register", createAdmin);
@@ -21,12 +21,12 @@ router.post("/register", createAdmin);
 router.post("/login", adminLogin);
 
 //admin profile fetch
-router.get("/profile", authmiddleware, getAdminProfile);
+router.get("/profile", authMiddleware, getAdminProfile);
 
 //add doctor
-router.post("/add-doctor", authmiddleware, addDoctor);
+router.post("/add-doctor", authMiddleware, addDoctor);
 
 //add pharmacist
-router.post("/add-pharmacist", authmiddleware, addPharmacist);
+router.post("/add-pharmacist", authMiddleware, addPharmacist);
 
 module.exports = router;

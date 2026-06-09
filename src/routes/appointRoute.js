@@ -3,7 +3,7 @@ const router = express.Router();
 
 const appointmentController = require("../controllers/appointController");
 
-const authMiddleware = require("../middleware/authMiddleware");
+const {authMiddleware} = require("../middleware/authMiddleware");
 
 const doctorOnly = require("../middleware/doctorMiddleware");
 

@@ -3,12 +3,14 @@ const doctorOnly = (req, res, next) => {
 
         if (!req.user) {
             return res.status(401).json({
-                message: "Authentication required"
+                success: false,
+                message: "Authentication required."
             });
         }
 
         if (req.user.role !== "doctor") {
             return res.status(403).json({
+                success: false,
                 message: "Access denied. Doctors only."
             });
         }
@@ -16,8 +18,10 @@ const doctorOnly = (req, res, next) => {
         next();
 
     } catch (error) {
-        res.status(500).json({
-            message: "Authorization error",
+
+        return res.status(500).json({
+            success: false,
+            message: "Authorization error.",
             error: error.message
         });
     }

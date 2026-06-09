@@ -3,7 +3,7 @@ const router = express.Router();
 
 const doctorController = require("../controllers/doctorController");
 
-const authMiddleware = require("../middleware/authMiddleware");
+const {authMiddleware} = require("../middleware/authMiddleware");
 
 const adminOnly = require("../middleware/adminMiddleware")
 

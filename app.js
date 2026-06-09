@@ -29,6 +29,9 @@ app.use("/doctor", doctorRoutes);
 const appointmentRoutes = require("./src/routes/appointRoute");
 app.use("/appointment", appointmentRoutes);
 
+const patientRoutes = require("./src/routes/patientRoute");
+app.use("/patient", patientRoutes);
+
 //basic test route
 app.get("/", (req, res) => {
     res.send("Api is running...");

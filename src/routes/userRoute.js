@@ -16,7 +16,7 @@ const {
     activateUser
 } = require("../controllers/userController");
 
-const authMiddleware = require("../middleware/authMiddleware");
+const {authMiddleware} = require("../middleware/authMiddleware");
 const adminOnly = require("../middleware/adminMiddleware");
 
 //register user
