@@ -1,6 +1,7 @@
 const Appointment = require("../models/appointModel");
 const Doctor = require("../models/doctorModel");
 const Patient = require("../models/patientModel");
+const User = require("../models/userModel");
 
 //----------------------------------user side ------------------------------------------ 
 // book appointment
@@ -334,19 +335,25 @@ exports.getAllAppointments = async (req, res) => {
     try {
 
         const appointments = await Appointment.find()
-            .populate(
-                "doctor_id",
-                "first_name last_name specialization"
-            )
-            .populate(
-                "patient_id",
-                "first_name last_name"
-            );
+            .populate("doctor_id", "first_name last_name specialization")
+            .populate("patient_id", "first_name last_name")
+            .sort({ createdAt: -1 });
+
+        // Manually attach user (booker) data since populate fails on custom string _id
+        const userIds = [...new Set(appointments.map(a => a.user_id).filter(Boolean))];
+        const users = await User.find({ _id: { $in: userIds } }).select("first_name last_name email");
+        const userMap = {};
+        users.forEach(u => { userMap[u._id] = u; });
+
+        const enriched = appointments.map(a => ({
+            ...a.toObject(),
+            booked_by: userMap[a.user_id] || null
+        }));
 
         res.status(200).json({
             message: "Appointments fetched successfully",
-            totalAppointments: appointments.length,
-            appointments
+            totalAppointments: enriched.length,
+            appointments: enriched
         });
 
     } catch (error) {

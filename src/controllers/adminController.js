@@ -4,6 +4,8 @@
 const Admin = require("../models/adminModel");
 const Doctor = require("../models/doctorModel");
 const Pharmacist = require("../models/pharmacistModel");
+const Patient = require("../models/patientModel");
+const Appointment = require("../models/appointModel");
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -253,8 +255,82 @@ exports.addPharmacist = async (req,res) => {
             error : error.message
         });
     }
+};// get dashboard stats
+exports.getDashboardStats = async (req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        // 1. Total Patients
+        const totalPatients = await Patient.countDocuments();
+
+        // 2. Appointments Today
+        const appointmentsToday = await Appointment.countDocuments({
+            appointment_date: {
+                $gte: today,
+                $lt: tomorrow
+            }
+        });
+
+        // 3. Total Revenue
+        const allAppointments = await Appointment.find({
+            status: "completed"
+        });
+        const totalRevenue = allAppointments.reduce((sum, app) => sum + (app.consultation_fee || 0), 0);
+
+        // 4. Quick Stats
+        const newPatientsToday = await Patient.countDocuments({
+            createdAt: {
+                $gte: today,
+                $lt: tomorrow
+            }
+        });
+        const consultationsDone = allAppointments.length;
+        const pendingReports = 5; // Placeholder for now
+
+        // 5. Recent Appointments List
+        const recentAppointmentsList = await Appointment.find()
+        .populate("doctor_id", "first_name last_name")
+        .populate("patient_id", "first_name last_name")
+        .limit(10)
+        .sort({ createdAt: -1 });
+
+        // Map it for the frontend
+        const mappedAppointments = recentAppointmentsList.map(app => {
+            let pName = app.patient_id ? `${app.patient_id.first_name} ${app.patient_id.last_name}` : "Unknown Patient";
+            let dName = app.doctor_id ? `Dr. ${app.doctor_id.first_name} ${app.doctor_id.last_name}` : "Unknown Doctor";
+            return {
+                name: pName,
+                time: app.appointment_time,
+                doctor: dName,
+                status: app.status,
+                avatar: pName.substring(0, 2).toUpperCase()
+            };
+        });
+
+        res.status(200).json({
+            message: "Dashboard stats fetched successfully",
+            stats: {
+                totalPatients,
+                appointmentsToday,
+                totalRevenue,
+                recoveryRate: "94%", // Placeholder
+                quickStats: {
+                    newPatientsToday,
+                    consultationsDone,
+                    pendingReports
+                },
+                todaysAppointmentsList: mappedAppointments
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching dashboard stats",
+            error: error.message
+        });
+    }
 };
-
-
-
-

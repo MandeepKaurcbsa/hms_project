@@ -9,7 +9,8 @@ const {
     adminLogin,
     getAdminProfile,
     addDoctor,
-    addPharmacist
+    addPharmacist,
+    getDashboardStats
 } = require("../controllers/adminController");
 
 const {authMiddleware} = require("../middleware/authMiddleware");
@@ -28,5 +29,8 @@ router.post("/add-doctor", authMiddleware, addDoctor);
 
 //add pharmacist
 router.post("/add-pharmacist", authMiddleware, addPharmacist);
+
+//get dashboard stats
+router.get("/dashboard-stats", authMiddleware, getDashboardStats);
 
 module.exports = router;
