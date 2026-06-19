@@ -9,10 +9,11 @@ dotenv.config();
 
 //connects to database
 connectDB();
-
+const cors = require("cors");
 const app = express();
- 
+
 //middleware
+app.use(cors());
 app.use(express.json());
 
 //user routes
@@ -32,6 +33,8 @@ app.use("/appointment", appointmentRoutes);
 const patientRoutes = require("./src/routes/patientRoute");
 app.use("/patient", patientRoutes);
 
+
+
 //basic test route
 app.get("/", (req, res) => {
     res.send("Api is running...");
@@ -40,7 +43,7 @@ app.get("/", (req, res) => {
 //global error handler
 app.use((err, req, res, next) => {
     res.status(500).json({
-        message : err.message
+        message: err.message
     });
 });
 

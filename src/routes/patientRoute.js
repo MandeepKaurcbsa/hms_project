@@ -3,14 +3,21 @@ const router = express.Router();
 
 const patientController = require("../controllers/patientController");
 
-const {authMiddleware} = require("../middleware/authMiddleware");
-const {userOnly} = require("../middleware/authMiddleware");
+const { authMiddleware, userOnly } = require("../middleware/authMiddleware");
 const doctorOnly = require("../middleware/doctorMiddleware");
-const adminOnly = require("../middleware/doctorMiddleware");
+const adminOnly = require("../middleware/adminMiddleware");
 
 // --------------------------------------------------
 // USER PATIENT ROUTES
 // --------------------------------------------------
+
+// Create a new patient (logged-in user)
+router.post(
+    "/create",
+    authMiddleware,
+    userOnly,
+    patientController.createPatient
+);
 
 // Get all patients belonging to logged-in user
 router.get(
@@ -58,35 +65,6 @@ router.get(
     authMiddleware,
     userOnly,
     patientController.getPatientAppointments
-);
-
-// --------------------------------------------------
-// DOCTOR PATIENT ROUTES
-// Base Route: /api/patients
-// --------------------------------------------------
-
-// Get all patients assigned to logged-in doctor
-router.get(
-    "/doctor/all",
-    authMiddleware,
-    doctorOnly,
-    patientController.getDoctorPatients
-);
-
-// Get single patient assigned to logged-in doctor
-router.get(
-    "/doctor/:id",
-    authMiddleware,
-    doctorOnly,
-    patientController.getDoctorSinglePatient
-);
-
-// Get appointment history of a patient
-router.get(
-    "/doctor/:id/appointments",
-    authMiddleware,
-    doctorOnly,
-    patientController.getDoctorPatientAppointments
 );
 
 // --------------------------------------------------
