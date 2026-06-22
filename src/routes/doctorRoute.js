@@ -7,6 +7,9 @@ const {authMiddleware} = require("../middleware/authMiddleware");
 
 const adminOnly = require("../middleware/adminMiddleware")
 
+// Public route — no auth required
+router.get("/active", doctorController.getActiveDoctors);
+
 //login doctor
 router.post("/login", doctorController.doctorLogin);
 

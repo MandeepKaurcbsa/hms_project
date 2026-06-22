@@ -9,6 +9,7 @@ const Appointment = require("../models/appointModel");
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const cloudinary = require("../config/cloudinary");
  
 // Create Admin
 exports.createAdmin = async (req, res) => {
@@ -137,12 +138,32 @@ exports.addDoctor = async (req, res) => {
             consult_fee,
             consult_mode,
             visit_address,
-            available_days,
             work_time_start,
             work_time_end,
             status,
             is_verified
         } = req.body;
+        
+        let available_days = req.body.available_days;
+        if (typeof available_days === 'string') {
+            try {
+                available_days = JSON.parse(available_days);
+            } catch (e) {
+                available_days = available_days.split(',').map(d => d.trim());
+            }
+        }
+
+        let profileImgUrl = req.body.profile_img || 'https://via.placeholder.com/150';
+
+        // Check if an image was uploaded
+        if (req.file) {
+            const b64 = Buffer.from(req.file.buffer).toString('base64');
+            let dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            const result = await cloudinary.uploader.upload(dataURI, {
+                folder: 'medipulse/doctors'
+            });
+            profileImgUrl = result.secure_url;
+        }
 
         //checking if doctor exists 
         const doctorExists = await Doctor.findOne({email});
@@ -163,7 +184,7 @@ exports.addDoctor = async (req, res) => {
             email,
             password : hashed,
             phone,
-            profile_img,
+            profile_img: profileImgUrl,
             license_no,
             department,
             specialization,
@@ -188,6 +209,51 @@ exports.addDoctor = async (req, res) => {
         res.status(500).json({
             message : "Error adding doctor",
             error : error.message 
+        });
+    }
+};
+
+// Update Doctor Profile
+exports.updateDoctorProfile = async (req, res) => {
+    try {
+        const { doctorId } = req.params;
+        
+        const doctor = await Doctor.findById(doctorId);
+        if (!doctor) {
+            return res.status(404).json({ message: "Doctor not found" });
+        }
+
+        let profileImgUrl = doctor.profile_img;
+
+        if (req.file) {
+            const b64 = Buffer.from(req.file.buffer).toString('base64');
+            let dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            const result = await cloudinary.uploader.upload(dataURI, {
+                folder: 'medipulse/doctors'
+            });
+            profileImgUrl = result.secure_url;
+        }
+
+        const updateData = { ...req.body, profile_img: profileImgUrl };
+
+        if (updateData.available_days && typeof updateData.available_days === 'string') {
+            try {
+                updateData.available_days = JSON.parse(updateData.available_days);
+            } catch (e) {
+                updateData.available_days = updateData.available_days.split(',').map(d => d.trim());
+            }
+        }
+
+        const updatedDoctor = await Doctor.findByIdAndUpdate(doctorId, updateData, { new: true });
+
+        res.status(200).json({
+            message: "Doctor profile updated successfully",
+            doctor: updatedDoctor
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error updating doctor profile",
+            error: error.message
         });
     }
 };

@@ -143,6 +143,25 @@ exports.getDoctorProfile = async (req, res) => {
     }
 };
 
+exports.getActiveDoctors = async (req, res) => {
+    try {
+        const doctors = await Doctor.find({ status: "active" })
+            .select("-password")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            message: "Active doctors fetched successfully",
+            totalDoctors: doctors.length,
+            doctors
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching active doctors",
+            error: error.message
+        });
+    }
+};
+
 exports.getAllDoctors = async (req, res) => {
     try {
 

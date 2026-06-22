@@ -2,8 +2,10 @@
 //The logic area
 
 const User = require("../models/userModel");
+const OTP = require("../models/otpModel");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
 
 //register user
 exports.registerUser = async(req, res) => {
@@ -302,6 +304,105 @@ exports.activateUser = async (req, res) => {
     } catch (error) {
         res.status(500).json({
             message: "Error activating user",
+            error: error.message
+        });
+    }
+};
+
+// Send OTP
+exports.sendOtp = async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ message: "Email is required" });
+        }
+
+        // Generate a 6 digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Save OTP to database
+        await OTP.create({
+            email,
+            otp
+        });
+
+        // Setup Nodemailer transport
+        const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: process.env.SMTP_PORT,
+            secure: false, // true for 465, false for other ports
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            }
+        });
+
+        // Send Email
+        await transporter.sendMail({
+            from: `MediPulse <${process.env.SMTP_FROM_EMAIL}>`,
+            to: email,
+            subject: "Your MediPulse Verification Code",
+            text: `Your verification code is: ${otp}. It will expire in 5 minutes.`,
+            html: `
+<div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+    <div style="background-color: #14b8a6; padding: 30px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: -0.5px;">MediPulse</h1>
+    </div>
+    <div style="padding: 40px 30px; color: #1a202c;">
+        <h2 style="margin-top: 0; color: #1a202c; font-size: 20px;">Verify your email address</h2>
+        <p style="font-size: 16px; color: #4a5568; line-height: 1.6;">Hello,</p>
+        <p style="font-size: 16px; color: #4a5568; line-height: 1.6;">Thank you for registering with MediPulse. Please use the verification code below to complete your sign-up process:</p>
+        
+        <div style="background-color: #f0fdfa; border: 2px dashed #14b8a6; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #14b8a6;">${otp}</span>
+        </div>
+        
+        <p style="font-size: 14px; color: #718096; margin-bottom: 0;">This code will expire in <strong>5 minutes</strong>. If you did not request this code, please ignore this email.</p>
+    </div>
+    <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="margin: 0; font-size: 12px; color: #a0aec0;">&copy; ${new Date().getFullYear()} MediPulse Healthcare Systems. All rights reserved.</p>
+    </div>
+</div>
+            `
+        });
+
+        res.status(200).json({ message: "OTP sent successfully" });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error sending OTP",
+            error: error.message
+        });
+    }
+};
+
+// Verify OTP
+exports.verifyOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ message: "Email and OTP are required" });
+        }
+
+        // Find the most recent OTP for this email
+        const otpRecord = await OTP.findOne({ email }).sort({ createdAt: -1 });
+
+        if (!otpRecord) {
+            return res.status(400).json({ message: "OTP not found or has expired" });
+        }
+
+        if (otpRecord.otp !== otp) {
+            return res.status(400).json({ message: "Invalid OTP" });
+        }
+
+        // Optional: delete the OTP after successful verification so it can't be reused
+        await OTP.deleteOne({ _id: otpRecord._id });
+
+        res.status(200).json({ message: "OTP verified successfully" });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error verifying OTP",
             error: error.message
         });
     }
