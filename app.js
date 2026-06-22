@@ -33,6 +33,9 @@ app.use("/appointment", appointmentRoutes);
 const patientRoutes = require("./src/routes/patientRoute");
 app.use("/patient", patientRoutes);
 
+const pharmacistRoutes = require("./src/routes/pharmacistRoute");
+app.use("/pharmacist", pharmacistRoutes);
+
 
 
 //basic test route

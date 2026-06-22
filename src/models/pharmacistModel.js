@@ -72,7 +72,7 @@ const pharmacistSchema = new mongoose.Schema({
     status : {
         type : String,
         required : true,
-        enum : ["active", "inactive", "on-leave"],
+        enum : ["active", "inactive", "on-leave", "blocked"],
         default : "active"
     },
     is_verified : {

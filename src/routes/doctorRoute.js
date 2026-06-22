@@ -18,10 +18,14 @@ router.get("/all", authMiddleware, adminOnly, doctorController.getAllDoctors);
 
 //fetch single doctor profile by admin
 router.get("/:id", authMiddleware, adminOnly, doctorController.getSingleDoctor);
-module.exports = router;
 
 //update doctor's profile
 router.put("/profile", authMiddleware ,doctorController.updateDoctorProfile); 
 
 //update password
 router.put("/change-password", authMiddleware, doctorController.changePassword);
+
+//update doctor status 
+router.put("/:id/status", authMiddleware, adminOnly, doctorController.updateDoctorStatus);
+
+module.exports = router;

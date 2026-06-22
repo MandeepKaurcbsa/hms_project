@@ -286,3 +286,48 @@ exports.changePassword = async (req, res) => {
         });
     }
 };
+
+// Update Doctor Status (Admin Only)
+
+exports.updateDoctorStatus = async (req, res) => {
+    try {
+
+        const { status } = req.body;
+
+        const validStatuses = [
+            "active",
+            "inactive",
+            "on-leave",
+            "blocked"
+        ];
+
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({
+                message: "Invalid status"
+            });
+        }
+
+        const doctor = await Doctor.findById(req.params.id);
+
+        if (!doctor) {
+            return res.status(404).json({
+                message: "Doctor not found"
+            });
+        }
+
+        doctor.status = status;
+
+        await doctor.save();
+
+        res.status(200).json({
+            message: `Doctor status updated to ${status}`,
+            doctor
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error updating doctor status",
+            error: error.message
+        });
+    }
+};

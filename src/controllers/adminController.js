@@ -255,7 +255,9 @@ exports.addPharmacist = async (req,res) => {
             error : error.message
         });
     }
-};// get dashboard stats
+};
+
+// get dashboard stats
 exports.getDashboardStats = async (req, res) => {
     try {
         const today = new Date();
