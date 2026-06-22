@@ -9,11 +9,13 @@ const {
     adminLogin,
     getAdminProfile,
     addDoctor,
+    updateDoctorProfile,
     addPharmacist,
     getDashboardStats
 } = require("../controllers/adminController");
 
 const {authMiddleware} = require("../middleware/authMiddleware");
+const upload = require("../middleware/uploadMiddleware");
 
 //create admin 
 router.post("/register", createAdmin);
@@ -25,7 +27,10 @@ router.post("/login", adminLogin);
 router.get("/profile", authMiddleware, getAdminProfile);
 
 //add doctor
-router.post("/add-doctor", authMiddleware, addDoctor);
+router.post("/add-doctor", authMiddleware, upload.single('profile_img'), addDoctor);
+
+//update doctor profile
+router.put("/update-doctor-profile/:doctorId", authMiddleware, upload.single('profile_img'), updateDoctorProfile);
 
 //add pharmacist
 router.post("/add-pharmacist", authMiddleware, addPharmacist);

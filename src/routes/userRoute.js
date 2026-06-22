@@ -13,7 +13,9 @@ const {
     updateUser,
     inactivateUser,
     blockUser,
-    activateUser
+    activateUser,
+    sendOtp,
+    verifyOtp
 } = require("../controllers/userController");
 
 const {authMiddleware} = require("../middleware/authMiddleware");
@@ -21,6 +23,10 @@ const adminOnly = require("../middleware/adminMiddleware");
 
 //register user
 router.post("/register", registerUser);
+
+// OTP routes
+router.post("/send-otp", sendOtp);
+router.post("/verify-otp", verifyOtp);
 
 //login user
 router.post("/login", loginUser);
