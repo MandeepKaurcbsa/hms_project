@@ -31,4 +31,7 @@ router.put("/change-password", authMiddleware, doctorController.changePassword);
 //update doctor status 
 router.put("/:id/status", authMiddleware, adminOnly, doctorController.updateDoctorStatus);
 
+//reset password (unauthenticated)
+router.put("/reset-password", doctorController.resetPassword);
+
 module.exports = router;
