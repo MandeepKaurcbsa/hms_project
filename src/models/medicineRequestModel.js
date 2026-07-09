@@ -1,13 +1,12 @@
-// This model stores different types of medicines available in the application
-// along with their pricing, stock, manufacturer, and prescription details.
+// This model stores medicine requests submitted by pharmacists.
+// These requests are reviewed by the admin before becoming available
+// in the Medicine collection.
 
 const mongoose = require("mongoose");
 const generateCustomId = require("../utils/idGenerator");
 
-const medicineSchema = new mongoose.Schema({
-    _id : {
-        type : String
-    },
+const medicineRequestSchema = new mongoose.Schema({
+
     medicine_name: {
         type: String,
         required: true,
@@ -35,7 +34,7 @@ const medicineSchema = new mongoose.Schema({
     strength: {
         type: String,
         required: true,
-        trim: true        // Example: 500mg, 250mg/5ml
+        trim: true
     },
 
     unit: {
@@ -53,13 +52,11 @@ const medicineSchema = new mongoose.Schema({
     stock_available: {
         type: Number,
         required: true,
-        min: 0,
-        default: 0
+        min: 0
     },
 
     description: {
         type: String,
-        trim: true,
         default: ""
     },
 
@@ -83,34 +80,47 @@ const medicineSchema = new mongoose.Schema({
         required: true
     },
 
+    requested_by: {
+        type: String,
+        required: true
+    },
+
     status: {
         type: String,
-        enum: ["active", "inactive"],
-        default: "active"
+        enum: ["Pending", "Approved", "Rejected"],
+        default: "Pending"
+    },
+
+    approved_by: {
+        type: String,
+        default: null
+    },
+
+    rejection_reason: {
+        type: String,
+        default: ""
+    },
+
+    reviewed_at: {
+        type: Date,
+        default: null
     }
 
 }, {
     timestamps: true
 });
 
-// GENERATE CUSTOM ID USING YOUR UTILITY
-medicineSchema.pre("save", async function () {
+medicineRequestSchema.pre("save", async function () {
 
     if (!this.isNew) return;
 
-    try {
-
-        this._id = await generateCustomId(
-            "medicineNums",
-            "MED",
-            "",
-            3
-        );
-
-    } catch (error) {
-
-        throw error;
-    }
+    this._id = await generateCustomId(
+        "medicineRequestNums",
+        "MED-REQ",
+        "",
+        3
+    );
 });
 
-module.exports = mongoose.model("Medicine", medicineSchema);
+
+module.exports = mongoose.model("MedicineRequest", medicineRequestSchema);

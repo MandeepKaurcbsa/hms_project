@@ -3,9 +3,11 @@ const router = express.Router();
 
 const doctorController = require("../controllers/doctorController");
 
-const {authMiddleware} = require("../middleware/authMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
 
-const adminOnly = require("../middleware/adminMiddleware")
+const adminOnly = require("../middleware/adminMiddleware");
+
+const doctorOnly = require("../middleware/doctorMiddleware");
 
 // Public route — no auth required
 router.get("/active", doctorController.getActiveDoctors);
@@ -14,7 +16,7 @@ router.get("/active", doctorController.getActiveDoctors);
 router.post("/login", doctorController.doctorLogin);
 
 //fetch logged in doctor's profile
-router.get("/profile", authMiddleware, doctorController.getDoctorProfile);
+router.get("/profile", authMiddleware, doctorOnly, doctorController.getDoctorProfile);
 
 //fetch all doctors by admin
 router.get("/all", authMiddleware, adminOnly, doctorController.getAllDoctors);
@@ -23,10 +25,10 @@ router.get("/all", authMiddleware, adminOnly, doctorController.getAllDoctors);
 router.get("/:id", authMiddleware, adminOnly, doctorController.getSingleDoctor);
 
 //update doctor's profile
-router.put("/profile", authMiddleware ,doctorController.updateDoctorProfile); 
+router.put("/profile", authMiddleware, doctorOnly, doctorController.updateDoctorProfile); 
 
 //update password
-router.put("/change-password", authMiddleware, doctorController.changePassword);
+router.put("/change-password", authMiddleware, doctorOnly, doctorController.changePassword);
 
 //update doctor status 
 router.put("/:id/status", authMiddleware, adminOnly, doctorController.updateDoctorStatus);
