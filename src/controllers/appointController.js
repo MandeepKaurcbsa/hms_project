@@ -626,3 +626,58 @@ exports.adminCancelAppointment = async (req, res) => {
         });
     }
 };
+
+//fetch booked slots for a specific doctor on a specific date
+exports.getBookedSlots = async (req, res) => {
+    try {
+        const { doctorId, date } = req.params;
+        
+        const bookedAppointments = await Appointment.find({
+            doctor_id: doctorId,
+            appointment_date: date,
+            status: { $in: ["pending", "confirmed"] }
+        }).select('appointment_time');
+
+        const bookedTimes = bookedAppointments.map(a => a.appointment_time);
+
+        res.status(200).json({
+            bookedTimes
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching booked slots",
+            error: error.message
+        });
+    }
+};
+
+//----------------------------------pharmacist side ------------------------------------------------
+
+// pharmacist can view all appointments (or filtered depending on UI)
+exports.getPharmacistAppointments = async (req, res) => {
+    try {
+        const appointments = await Appointment.find()
+            .populate(
+                "doctor_id",
+                "first_name last_name specialization department"
+            )
+            .populate(
+                "patient_id",
+                "first_name last_name gender age blood_group"
+            )
+            .sort({ appointment_date: -1, appointment_time: -1 });
+
+        res.status(200).json({
+            message: "Appointments fetched successfully",
+            totalAppointments: appointments.length,
+            appointments
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching appointments",
+            error: error.message
+        });
+    }
+};

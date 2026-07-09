@@ -9,6 +9,8 @@ const doctorOnly = require("../middleware/doctorMiddleware");
 
 const adminOnly = require("../middleware/adminMiddleware");
 
+const pharmacistOnly = require("../middleware/pharmacistMiddleware");
+
 //----------------------------------request by user ---------------------------------------- 
 
 //book appointment
@@ -59,5 +61,12 @@ router.put("/admin/:id/cancel", authMiddleware, adminOnly, appointmentController
 
 //fetch a single appointment booked by user
 router.get("/:id", authMiddleware, appointmentController.getSingleAppointment);
+
+//fetch booked slots for a specific doctor on a specific date (public API for booking modal)
+router.get("/slots/:doctorId/:date", appointmentController.getBookedSlots);
+
+//--------------------------------pharmacist side -------------------------------------------
+//pharmacist can fetch all appointments
+router.get("/pharmacistAll", authMiddleware, pharmacistOnly, appointmentController.getPharmacistAppointments);
 
 module.exports = router;
