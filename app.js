@@ -36,6 +36,8 @@ app.use("/patient", patientRoutes);
 const pharmacistRoutes = require("./src/routes/pharmacistRoute");
 app.use("/pharmacist", pharmacistRoutes);
 
+const chatbotRoutes = require("./src/routes/chatbotRoute");
+app.use("/api/chatbot", chatbotRoutes);
 const medicineRequestRoutes = require("./src/routes/medicineRequestRoute");
 app.use("/med-req", medicineRequestRoutes);
 

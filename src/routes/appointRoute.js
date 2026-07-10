@@ -3,6 +3,7 @@ const router = express.Router();
 
 const appointmentController = require("../controllers/appointController");
 
+const { authMiddleware } = require("../middleware/authMiddleware");
 const authMiddleware = require("../middleware/authMiddleware");
 
 const userOnly = require("../middleware/userMiddleware");
@@ -11,7 +12,7 @@ const doctorOnly = require("../middleware/doctorMiddleware");
 
 const adminOnly = require("../middleware/adminMiddleware");
 
-const pharmacistOnly = require("../middleware/pharmacistMiddleware");
+// const pharmacistOnly = require("../middleware/pharmacistMiddleware");
 
 //----------------------------------request by user ---------------------------------------- 
 
@@ -19,6 +20,7 @@ const pharmacistOnly = require("../middleware/pharmacistMiddleware");
 router.post("/book", authMiddleware, userOnly, appointmentController.createAppointment);
 
 //fetch all appointments user has
+router.get("/my", authMiddleware, appointmentController.getMyAppointments);
 router.get( "/my", authMiddleware, userOnly, appointmentController.getMyAppointments);
 
 //---------------------------------request by doctor ------------------------------------------------ 
@@ -69,6 +71,6 @@ router.get("/slots/:doctorId/:date", appointmentController.getBookedSlots);
 
 //--------------------------------pharmacist side -------------------------------------------
 //pharmacist can fetch all appointments
-router.get("/pharmacistAll", authMiddleware, pharmacistOnly, appointmentController.getPharmacistAppointments);
+router.get("/pharmacistAll", authMiddleware, appointmentController.getPharmacistAppointments);
 
 module.exports = router;
