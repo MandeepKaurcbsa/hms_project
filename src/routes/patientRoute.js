@@ -3,9 +3,10 @@ const router = express.Router();
 
 const patientController = require("../controllers/patientController");
 
-const { authMiddleware, userOnly } = require("../middleware/authMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
 const doctorOnly = require("../middleware/doctorMiddleware");
 const adminOnly = require("../middleware/adminMiddleware");
+const userOnly = require("../middleware/userMiddleware");
 
 // --------------------------------------------------
 // USER PATIENT ROUTES

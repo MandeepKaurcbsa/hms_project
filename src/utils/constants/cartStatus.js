@@ -1,0 +1,7 @@
+module.exports = {
+
+    HEALTHY: "HEALTHY",
+
+    ATTENTION_REQUIRED: "ATTENTION_REQUIRED"
+
+};

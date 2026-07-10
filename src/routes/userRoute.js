@@ -18,7 +18,8 @@ const {
     verifyOtp
 } = require("../controllers/userController");
 
-const {authMiddleware} = require("../middleware/authMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
+const userOnly = require("../middleware/userMiddleware");
 const adminOnly = require("../middleware/adminMiddleware");
 
 //register user
@@ -32,7 +33,7 @@ router.post("/verify-otp", verifyOtp);
 router.post("/login", loginUser);
 
 //get logged in users profile
-router.get("/profile", authMiddleware, getUserProfile);
+router.get("/profile", authMiddleware, userOnly, getUserProfile);
 
 //get all users
 router.get("/all", authMiddleware, adminOnly, getAllUsers);
@@ -41,7 +42,7 @@ router.get("/all", authMiddleware, adminOnly, getAllUsers);
 router.get("/:id", authMiddleware, adminOnly, getSingleUser);
 
 //update a users profile
-router.put("/update", authMiddleware, updateUser);
+router.put("/update", authMiddleware, userOnly, updateUser);
 
 //inactivates the user profile by admin(soft delete)
 router.put("/inactivate/:id", authMiddleware, adminOnly, inactivateUser);

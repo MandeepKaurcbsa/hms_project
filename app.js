@@ -38,6 +38,23 @@ app.use("/pharmacist", pharmacistRoutes);
 
 const chatbotRoutes = require("./src/routes/chatbotRoute");
 app.use("/api/chatbot", chatbotRoutes);
+const medicineRequestRoutes = require("./src/routes/medicineRequestRoute");
+app.use("/med-req", medicineRequestRoutes);
+
+const medicineRoutes = require("./src/routes/medicineRoute");
+app.use("/medicine", medicineRoutes);
+
+const medicineRecordRoutes = require("./src/routes/medicalRecordRoute");
+app.use("/med-rec", medicineRecordRoutes);
+
+const cartRoutes = require("./src/routes/cartRoute");
+app.use("/cart", cartRoutes);
+
+const phsalesRoutes = require("./src/routes/phSalesRoute");
+app.use("/sale", phsalesRoutes);
+
+const prescriptionRoutes = require("./src/routes/prescriptionRoute");
+app.use("/prescription", prescriptionRoutes);
 
 //basic test route
 app.get("/", (req, res) => {
