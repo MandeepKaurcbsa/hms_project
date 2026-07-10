@@ -1,4 +1,4 @@
-//adminController -> admminRoute
+//adminController -> adminRoute
 //handles admin routes
 
 const express = require("express");
@@ -14,15 +14,11 @@ const {
     getDashboardStats
 } = require("../controllers/adminController");
 
-<<<<<<< HEAD
-const {authMiddleware} = require("../middleware/authMiddleware");
-const upload = require("../middleware/uploadMiddleware");
-=======
 const authMiddleware = require("../middleware/authMiddleware");
 const adminOnly = require("../middleware/adminMiddleware");
->>>>>>> fdaae64 (Major Backend Completed)
+const upload = require("../middleware/uploadMiddleware");
 
-//create admin 
+//create admin
 router.post("/register", createAdmin);
 
 //admin login
@@ -32,14 +28,22 @@ router.post("/login", adminLogin);
 router.get("/profile", authMiddleware, adminOnly, getAdminProfile);
 
 //add doctor
-<<<<<<< HEAD
-router.post("/add-doctor", authMiddleware, upload.single('profile_img'), addDoctor);
+router.post(
+    "/add-doctor",
+    authMiddleware,
+    adminOnly,
+    upload.single("profile_img"),
+    addDoctor
+);
 
 //update doctor profile
-router.put("/update-doctor-profile/:doctorId", authMiddleware, upload.single('profile_img'), updateDoctorProfile);
-=======
-router.post("/add-doctor", authMiddleware, adminOnly, addDoctor);
->>>>>>> fdaae64 (Major Backend Completed)
+router.put(
+    "/update-doctor-profile/:doctorId",
+    authMiddleware,
+    adminOnly,
+    upload.single("profile_img"),
+    updateDoctorProfile
+);
 
 //add pharmacist
 router.post("/add-pharmacist", authMiddleware, adminOnly, addPharmacist);
