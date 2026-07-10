@@ -36,7 +36,8 @@ app.use("/patient", patientRoutes);
 const pharmacistRoutes = require("./src/routes/pharmacistRoute");
 app.use("/pharmacist", pharmacistRoutes);
 
-
+const chatbotRoutes = require("./src/routes/chatbotRoute");
+app.use("/api/chatbot", chatbotRoutes);
 
 //basic test route
 app.get("/", (req, res) => {
