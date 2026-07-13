@@ -5,16 +5,16 @@ const medicineController = require("../controllers/medicineController");
 
 const authMiddleware = require("../middleware/authMiddleware");
 const adminOnly = require("../middleware/adminMiddleware");
+const upload = require("../middleware/uploadMiddleware");
 
 // Create medicine
 router.post(
     "/create",
     authMiddleware,
     adminOnly,
+    upload.single("medicine_image"),
     medicineController.createMedicine
 );
-
-module.exports = router;
 
 // Get all medicines
 router.get(

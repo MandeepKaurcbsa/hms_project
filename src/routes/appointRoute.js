@@ -3,7 +3,6 @@ const router = express.Router();
 
 const appointmentController = require("../controllers/appointController");
 
-const { authMiddleware } = require("../middleware/authMiddleware");
 const authMiddleware = require("../middleware/authMiddleware");
 
 const userOnly = require("../middleware/userMiddleware");
@@ -20,7 +19,6 @@ const adminOnly = require("../middleware/adminMiddleware");
 router.post("/book", authMiddleware, userOnly, appointmentController.createAppointment);
 
 //fetch all appointments user has
-router.get("/my", authMiddleware, appointmentController.getMyAppointments);
 router.get( "/my", authMiddleware, userOnly, appointmentController.getMyAppointments);
 
 //---------------------------------request by doctor ------------------------------------------------ 

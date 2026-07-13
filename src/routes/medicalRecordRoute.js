@@ -18,8 +18,6 @@ router.post(
     medicalRecordController.createMedicalRecord
 );
 
-module.exports = router;
-
 // Get all medical records created by logged-in doctor
 router.get(
     "/my-records",
@@ -28,31 +26,14 @@ router.get(
     medicalRecordController.getMyMedicalRecords
 );
 
-// Get single medical record
-router.get(
-    "/:id",
-    authMiddleware,
-    doctorOnly,
-    medicalRecordController.getSingleMedicalRecord
-);
-
-// Update medical record
-router.put(
-    "/:id",
-    authMiddleware,
-    doctorOnly,
-    medicalRecordController.updateMedicalRecord
-);
-
 // --------------------------patient side ----------------------------------------------------------
 
 // Get medical records of logged-in user's patients
-// Optional Query: ?patient_id=PAT-001
 router.get(
-    "/my-records",
+    "/patient-records",
     authMiddleware,
     userOnly,
-    medicalRecordController.getMyMedicalRecords
+    medicalRecordController.getPatientMedicalRecords
 );
 
 // Get single medical record of logged-in user's patient
@@ -87,6 +68,24 @@ router.patch(
     authMiddleware,
     adminOnly,
     medicalRecordController.restoreMedicalRecord
+);
+
+// ---- wildcard routes (must be last to not swallow named routes above) ----
+
+// Get single medical record (doctor)
+router.get(
+    "/:id",
+    authMiddleware,
+    doctorOnly,
+    medicalRecordController.getSingleMedicalRecord
+);
+
+// Update medical record (doctor)
+router.put(
+    "/:id",
+    authMiddleware,
+    doctorOnly,
+    medicalRecordController.updateMedicalRecord
 );
 
 module.exports = router;

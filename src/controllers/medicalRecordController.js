@@ -122,12 +122,15 @@ exports.getMyMedicalRecords = async (req, res) => {
     try {
 
         const doctor_id = req.user.id;
+        const { patient_id } = req.query;
 
-        const medicalRecords = await MedicalRecord.find({
-            doctor_id
-        })
+        const filter = { doctor_id };
+        if (patient_id) filter.patient_id = patient_id;
+
+        const medicalRecords = await MedicalRecord.find(filter)
         .populate("patient_id", "first_name last_name gender")
         .populate("appointment_id", "appointment_date appointment_time")
+        .populate("medicines_prescribed.medicine_id", "medicine_name strength category")
         .sort({ createdAt: -1 });
 
         return res.status(200).json({
@@ -283,7 +286,7 @@ exports.updateMedicalRecord = async (req, res) => {
 
 // --------------------patient side ----------------------------------------------------------
 
-exports.getMyMedicalRecords = async (req, res) => {
+exports.getPatientMedicalRecords = async (req, res) => {
     try {
 
         const user_id = req.user.id;
@@ -328,6 +331,7 @@ exports.getMyMedicalRecords = async (req, res) => {
         const medicalRecords = await MedicalRecord.find(filter)
             .populate("doctor_id", "first_name last_name specialization")
             .populate("appointment_id", "appointment_date appointment_time consult_mode")
+            .populate("medicines_prescribed.medicine_id", "medicine_name strength category")
             .sort({ visit_date: -1 });
 
         return res.status(200).json({

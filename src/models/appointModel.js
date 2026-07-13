@@ -1,7 +1,7 @@
 //This model will store appointment details, time and status between doctor and patient.  
 
 const mongoose = require("mongoose");
-const generateCustomId = require("../utils/idgenerator"); // Make sure this path points to your idgenerator.js file
+const generateCustomId = require("../utils/idGenerator"); // Make sure this path points to your idgenerator.js file
 
 
 const appointmentSchema = new mongoose.Schema({
@@ -10,98 +10,98 @@ const appointmentSchema = new mongoose.Schema({
         type: String
     },
     //user who booked appointment
-    user_id : {
-        type : String,
-        ref : "User",
-        required : true
+    user_id: {
+        type: String,
+        ref: "User",
+        required: true
     },
     //patient for whom the appointment is booked 
-    patient_id : {
-        type : String,
-        ref : "Patient",
-        required : true 
+    patient_id: {
+        type: String,
+        ref: "Patient",
+        required: true
     },
-    doctor_id : {
-        type : String,
-        ref : "Doctor",
-        required : true
+    doctor_id: {
+        type: String,
+        ref: "Doctor",
+        required: true
     },
-    appointment_date : {
-        type : Date,
-        required : true 
+    appointment_date: {
+        type: Date,
+        required: true
     },
-    appointment_time : {                //"10:00"  it must be written like this only**
-        type : String,
-        required : true 
+    appointment_time: {                //"10:00"  it must be written like this only**
+        type: String,
+        required: true
     },
-    consult_mode :{
-        type : String,
-        enum : ["online", "offline"],
-        default : "offline",
-        required : true
+    consult_mode: {
+        type: String,
+        enum: ["online", "offline"],
+        default: "offline",
+        required: true
     },
-    disease : {
-        type : String,
-        required : true 
+    disease: {
+        type: String,
+        required: true
     },
-    symptoms : [
+    symptoms: [
         {
-            type : String,
-            required : true
+            type: String,
+            required: true
         }
     ],
-    status : {
-        type : String,
-        enum : ["pending", "confirmed", "completed" , "cancelled", "rejected"],
-        default : "pending",
-        required : true 
+    status: {
+        type: String,
+        enum: ["pending", "confirmed", "completed", "cancelled", "rejected"],
+        default: "pending",
+        required: true
     },
-    payment_status : {
-        type : String,
+    payment_status: {
+        type: String,
         enum: [
             "pending",
             "paid",
             "failed",
             "refunded",
             "partially_refunded"
-        ],     
-        default : "pending",
-        required : true
+        ],
+        default: "pending",
+        required: true
     },
-    payment_method : {
-        type : String,
-        enum : ["cash", "upi", "net-banking", "card"],
-        default : "upi",
-        required : true
+    payment_method: {
+        type: String,
+        enum: ["cash", "upi", "net-banking", "card"],
+        default: "upi",
+        required: true
     },
-    consultation_fee : {
-        type : Number,
-        required : true 
+    consultation_fee: {
+        type: Number,
+        required: true
     },
-    prescription_added : {
-        type : Boolean,
-        default : false,
-        required : true 
+    prescription_added: {
+        type: Boolean,
+        default: false,
+        required: true
     },
-    notes : {
-        type : String,
+    notes: {
+        type: String,
     },
-    cancelled_by : {
-        type : String,
-        enum : ["user", "doctor", "admin"],
+    cancelled_by: {
+        type: String,
+        enum: ["user", "doctor", "admin"],
     },
-    cancel_reason : {
-        type : String,
+    cancel_reason: {
+        type: String,
     },
     refund_status: {
-    type: String,
-    enum: [
-        "not_applicable",
-        "pending",
-        "refunded",
-        "failed"
-    ],
-    default: "not_applicable"
+        type: String,
+        enum: [
+            "not_applicable",
+            "pending",
+            "refunded",
+            "failed"
+        ],
+        default: "not_applicable"
     },
 
     //     Status	Meaning
@@ -110,7 +110,7 @@ const appointmentSchema = new mongoose.Schema({
     // refunded	Money has been successfully returned
     // failed	Refund attempt failed
 
-        refund_percentage: {
+    refund_percentage: {
         type: Number,
         default: 0,
         min: 0
@@ -122,13 +122,13 @@ const appointmentSchema = new mongoose.Schema({
         min: 0
     },
     cancelled_at: {
-    type: Date
+        type: Date
     },
     refund_processed_at: {
-    type: Date
+        type: Date
     }
-},{
-    timestamps : true 
+}, {
+    timestamps: true
 });
 
 appointmentSchema.pre("save", async function () {
