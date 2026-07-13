@@ -1,4 +1,5 @@
 const Medicine = require("../models/medicineModel");
+const cloudinary = require("../config/cloudinary");
 
 exports.createMedicine = async (req, res) => {
     try {
@@ -18,6 +19,17 @@ exports.createMedicine = async (req, res) => {
             mfg_date,
             expiry_date
         } = req.body;
+
+        // Handle image upload (file via multipart/form-data takes priority over body URL)
+        let medicine_image_url = medicine_image || '';
+        if (req.file) {
+            const b64 = Buffer.from(req.file.buffer).toString('base64');
+            const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            const result = await cloudinary.uploader.upload(dataURI, {
+                folder: 'medipulse/medicines'
+            });
+            medicine_image_url = result.secure_url;
+        }
 
         // Required field validation
         if (
@@ -70,7 +82,7 @@ exports.createMedicine = async (req, res) => {
             price,
             stock_available,
             description,
-            medicine_image,
+            medicine_image: medicine_image_url,
             requires_prescription,
             mfg_date,
             expiry_date

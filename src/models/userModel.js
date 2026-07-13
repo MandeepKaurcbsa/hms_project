@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const generateCustomId = require("../utils/idgenerator"); // Make sure this path points to your idgenerator.js file
+const generateCustomId = require("../utils/idGenerator"); // Make sure this path points to your idgenerator.js file
 
 const userSchema = new mongoose.Schema({
     // Changed to String to store your formatted ID (e.g., "USER-011")
