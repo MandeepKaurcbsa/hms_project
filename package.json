@@ -21,6 +21,7 @@
     "mongoose-sequence-plugin": "^1.0.5",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.1",
+    "razorpay": "^2.9.6",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
