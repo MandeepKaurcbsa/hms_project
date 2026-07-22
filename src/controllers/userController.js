@@ -177,6 +177,33 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
+// Get all users with their patients (admin)
+exports.getAllUsersWithPatients = async (req, res) => {
+    try {
+        const Patient = require("../models/patientModel");
+
+        const users = await User.find().select("-password").lean();
+
+        const usersWithPatients = await Promise.all(
+            users.map(async (user) => {
+                const patients = await Patient.find({ user_id: user._id.toString() }).lean();
+                return { ...user, patients };
+            })
+        );
+
+        res.status(200).json({
+            message: "Users with patients fetched successfully",
+            total: usersWithPatients.length,
+            users: usersWithPatients
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error fetching users with patients",
+            error: error.message
+        });
+    }
+};
+
 //update user profile 
 exports.updateUser = async (req, res) => {
     try {
@@ -396,13 +423,62 @@ exports.verifyOtp = async (req, res) => {
             return res.status(400).json({ message: "Invalid OTP" });
         }
 
-        // Optional: delete the OTP after successful verification so it can't be reused
+        // Delete the OTP after successful verification so it can't be reused
         await OTP.deleteOne({ _id: otpRecord._id });
+
+        // Mark user email as verified
+        await User.findOneAndUpdate({ email }, { is_verified: true });
 
         res.status(200).json({ message: "OTP verified successfully" });
     } catch (error) {
         res.status(500).json({
             message: "Error verifying OTP",
+            error: error.message
+        });
+    }
+};
+
+// Reset Password
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+
+        if (!email || !otp || !newPassword) {
+            return res.status(400).json({ message: "Email, OTP, and new password are required" });
+        }
+
+        // Verify the OTP
+        const otpRecord = await OTP.findOne({ email }).sort({ createdAt: -1 });
+
+        if (!otpRecord) {
+            return res.status(400).json({ message: "OTP not found or has expired" });
+        }
+
+        if (otpRecord.otp !== otp) {
+            return res.status(400).json({ message: "Invalid OTP" });
+        }
+
+        // Find user
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        // Update password
+        user.password = hashedPassword;
+        await user.save();
+
+        // Delete the used OTP
+        await OTP.deleteOne({ _id: otpRecord._id });
+
+        res.status(200).json({ message: "Password reset successfully" });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error resetting password",
             error: error.message
         });
     }
