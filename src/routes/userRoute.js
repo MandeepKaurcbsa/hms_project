@@ -10,12 +10,14 @@ const {
     getSingleUser,
     getUserProfile,
     getAllUsers,
+    getAllUsersWithPatients,
     updateUser,
     inactivateUser,
     blockUser,
     activateUser,
     sendOtp,
-    verifyOtp
+    verifyOtp,
+    resetPassword
 } = require("../controllers/userController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -28,6 +30,7 @@ router.post("/register", registerUser);
 // OTP routes
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
+router.post("/reset-password", resetPassword);
 
 //login user
 router.post("/login", loginUser);
@@ -37,6 +40,9 @@ router.get("/profile", authMiddleware, userOnly, getUserProfile);
 
 //get all users
 router.get("/all", authMiddleware, adminOnly, getAllUsers);
+
+// get all users with their patients (admin)
+router.get("/all-with-patients", authMiddleware, adminOnly, getAllUsersWithPatients);
 
 //get single user(admin fetches this)
 router.get("/:id", authMiddleware, adminOnly, getSingleUser);
