@@ -53,7 +53,8 @@ const pharmacistSchema = new mongoose.Schema({
     },
     profile_img : {
         type : String,
-        required : true 
+        required : false,
+        default : ""
     },
     working_days : [
         {

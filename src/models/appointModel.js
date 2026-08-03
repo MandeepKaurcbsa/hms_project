@@ -86,9 +86,25 @@ const appointmentSchema = new mongoose.Schema({
     notes: {
         type: String,
     },
+    // who booked this appointment: 'user' or 'pharmacist'
+    booker_role: {
+        type: String,
+        enum: ["user", "pharmacist"],
+        default: "user"
+    },
+    // original fee before discount (used for pharmacist appointments)
+    original_fee: {
+        type: Number,
+        default: 0
+    },
+    // true = doctor confirmed, waiting for pharmacist to pay to finalise
+    awaiting_pharmacist_payment: {
+        type: Boolean,
+        default: false
+    },
     cancelled_by: {
         type: String,
-        enum: ["user", "doctor", "admin"],
+        enum: ["user", "doctor", "admin", "pharmacist"],
     },
     cancel_reason: {
         type: String,

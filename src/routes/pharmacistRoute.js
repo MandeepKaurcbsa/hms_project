@@ -30,7 +30,7 @@ router.put("/change-password", authMiddleware, pharmacistOnly, pharmacistControl
 //update pharmacist status
 router.put("/:id/status", authMiddleware, adminOnly, pharmacistController.updatePharmacistStatus);
 
-//verify pharmacist account 
-router.put("/:id/verify", authMiddleware, adminOnly, pharmacistController.verifyPharmacist);
+//reset password (unauthenticated / forgot password)
+router.put("/reset-password", pharmacistController.resetPassword);
 
-module.exports = router;
+module.exports = router;

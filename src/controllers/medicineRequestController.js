@@ -375,3 +375,52 @@ exports.getAllMedicineRequests = async (req, res) => {
 
     }
 };
+
+exports.cancelMedicineRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { cancellation_reason } = req.body;
+        const pharmacistId = req.user.id;
+
+        const medicineRequest = await MedicineRequest.findById(id);
+
+        if (!medicineRequest) {
+            return res.status(404).json({
+                success: false,
+                message: "Medicine request not found."
+            });
+        }
+
+        if (medicineRequest.requested_by !== pharmacistId) {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied. You can only cancel your own stock requests."
+            });
+        }
+
+        if (medicineRequest.status !== "Pending") {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot cancel request with status "${medicineRequest.status}". Only pending requests can be cancelled.`
+            });
+        }
+
+        medicineRequest.status = "Cancelled";
+        medicineRequest.cancellation_reason = cancellation_reason || "Cancelled by pharmacist";
+        medicineRequest.cancelled_at = new Date();
+
+        await medicineRequest.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Medicine request cancelled successfully.",
+            data: medicineRequest
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Failed to cancel medicine request.",
+            error: error.message
+        });
+    }
+};

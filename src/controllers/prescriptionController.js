@@ -239,6 +239,35 @@ exports.getMyPrescriptions = async (req, res) => {
 };
 
 
+// Get prescription by appointment_id
+exports.getPrescriptionByAppointment = async (req, res) => {
+    try {
+        const { appointment_id } = req.params;
+
+        const prescription = await Prescription.findOne({ appointment_id })
+            .populate("doctor_id", "first_name last_name specialization department email phone")
+            .populate("patient_id", "first_name last_name gender age blood_group");
+
+        if (!prescription) {
+            return res.status(404).json({
+                success: false,
+                message: "Prescription not found for this appointment."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            prescription
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch prescription details.",
+            error: error.message
+        });
+    }
+};
+
 // Get single prescription
 exports.getPrescriptionDetails = async (req, res) => {
 

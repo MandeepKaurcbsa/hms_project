@@ -60,6 +60,13 @@ router.get(
 
 // ---------------------------------------common api -----------------------------------------
 
+// Get prescription by appointment_id
+router.get(
+    "/appointment/:appointment_id",
+    authMiddleware,
+    prescriptionController.getPrescriptionByAppointment
+);
+
 // Get single prescription
 router.get(
     "/:prescription_id",

@@ -87,7 +87,7 @@ const medicineRequestSchema = new mongoose.Schema({
 
     status: {
         type: String,
-        enum: ["Pending", "Approved", "Rejected"],
+        enum: ["Pending", "Approved", "Rejected", "Cancelled"],
         default: "Pending"
     },
 
@@ -99,6 +99,16 @@ const medicineRequestSchema = new mongoose.Schema({
     rejection_reason: {
         type: String,
         default: ""
+    },
+
+    cancellation_reason: {
+        type: String,
+        default: ""
+    },
+
+    cancelled_at: {
+        type: Date,
+        default: null
     },
 
     reviewed_at: {

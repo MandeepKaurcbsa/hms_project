@@ -119,18 +119,18 @@ exports.getMyAppointments = async (req, res) => {
     }
 };
 
-//logged in user can view a single appointment
+//logged in user OR pharmacist can view a single appointment they own
 exports.getSingleAppointment = async (req, res) => {
     try {
 
         const appointment = await Appointment.findById(req.params.id)
             .populate(
                 "doctor_id",
-                "first_name last_name specialization department"
+                "first_name last_name specialization department consult_fee profile_img"
             )
             .populate(
                 "patient_id",
-                "first_name last_name gender age"
+                "first_name last_name gender age blood_group phone"
             );
 
         if (!appointment) {
@@ -139,8 +139,9 @@ exports.getSingleAppointment = async (req, res) => {
             });
         }
 
-        // security check
-        if (appointment.user_id !== req.user.id) {
+        // Allow both users and pharmacists — both book with their own user_id
+        const isOwner = String(appointment.user_id) === String(req.user.id);
+        if (!isOwner) {
             return res.status(403).json({
                 message: "Access denied"
             });
@@ -238,6 +239,12 @@ exports.confirmAppointment = async (req, res) => {
         }
 
         appointment.status = "confirmed";
+
+        // If a pharmacist booked this appointment, flag it so
+        // the pharmacist knows they need to complete payment.
+        if (appointment.booker_role === "pharmacist") {
+            appointment.awaiting_pharmacist_payment = true;
+        }
 
         await appointment.save();
 
@@ -632,9 +639,17 @@ exports.getBookedSlots = async (req, res) => {
     try {
         const { doctorId, date } = req.params;
         
+        const startOfDay = new Date(date);
+        startOfDay.setUTCHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setUTCHours(23, 59, 59, 999);
+
         const bookedAppointments = await Appointment.find({
             doctor_id: doctorId,
-            appointment_date: date,
+            $or: [
+                { appointment_date: date },
+                { appointment_date: { $gte: startOfDay, $lte: endOfDay } }
+            ],
             status: { $in: ["pending", "confirmed"] }
         }).select('appointment_time');
 
@@ -654,21 +669,29 @@ exports.getBookedSlots = async (req, res) => {
 
 //----------------------------------pharmacist side ------------------------------------------------
 
-// pharmacist can view all appointments (or filtered depending on UI)
+// Pharmacist can view only their own booked appointments
 exports.getPharmacistAppointments = async (req, res) => {
     try {
-        const appointments = await Appointment.find()
-            .populate(
-                "doctor_id",
-                "first_name last_name specialization department"
-            )
-            .populate(
-                "patient_id",
-                "first_name last_name gender age blood_group"
-            )
-            .sort({ appointment_date: -1, appointment_time: -1 });
+        const Patient = require("../models/patientModel");
+        const Appointment = require("../models/appointModel");
+        const Doctor = require("../models/doctorModel");
+
+        const patients = await Patient.find({ user_id: req.user.id }).select("_id");
+        const patientIds = patients.map(p => p._id);
+
+        const appointments = await Appointment.find({
+            $or: [
+                { user_id: req.user.id },
+                { booker_role: "pharmacist" },
+                { patient_id: { $in: patientIds } }
+            ]
+        })
+            .populate("doctor_id", "first_name last_name specialization department consult_fee phone email profile_img")
+            .populate("patient_id", "first_name last_name gender age blood_group phone")
+            .sort({ createdAt: -1, appointment_date: -1 });
 
         res.status(200).json({
+            success: true,
             message: "Appointments fetched successfully",
             totalAppointments: appointments.length,
             appointments
@@ -676,8 +699,244 @@ exports.getPharmacistAppointments = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({
+            success: false,
             message: "Error fetching appointments",
             error: error.message
         });
     }
 };
+
+// ─── STEP 1 ───
+// Pharmacist books an appointment → status: "pending", payment_status: "pending"
+// Doctor will then accept or reject it.
+exports.pharmacistBookAppointment = async (req, res) => {
+    try {
+        const {
+            doctor_id,
+            appointment_date,
+            appointment_time,
+            consult_mode,
+            disease,
+            symptoms
+        } = req.body;
+
+        if (!doctor_id || !appointment_date || !appointment_time || !disease) {
+            return res.status(400).json({
+                success: false,
+                message: "Please fill all required fields: doctor, date, time, disease."
+            });
+        }
+
+        const Pharmacist = require("../models/pharmacistModel");
+        const pharmacist = await Pharmacist.findById(req.user.id);
+        if (!pharmacist) {
+            return res.status(404).json({ success: false, message: "Pharmacist account not found." });
+        }
+
+        const doctor = await Doctor.findById(doctor_id);
+        if (!doctor) {
+            return res.status(404).json({ success: false, message: "Doctor not found." });
+        }
+        if (doctor.status !== "active") {
+            return res.status(400).json({ success: false, message: "Selected doctor is currently not active." });
+        }
+
+        // Check slot availability
+        const startOfDay = new Date(appointment_date);
+        startOfDay.setUTCHours(0, 0, 0, 0);
+        const endOfDay = new Date(appointment_date);
+        endOfDay.setUTCHours(23, 59, 59, 999);
+
+        const slotTaken = await Appointment.findOne({
+            doctor_id,
+            $or: [
+                { appointment_date: appointment_date },
+                { appointment_date: { $gte: startOfDay, $lte: endOfDay } }
+            ],
+            appointment_time,
+            status: { $in: ["pending", "confirmed"] }
+        });
+        if (slotTaken) {
+            return res.status(400).json({
+                success: false,
+                message: "This time slot is already booked for the selected doctor."
+            });
+        }
+
+        // 10% pharmacist discount
+        const originalFee = doctor.consult_fee || 500;
+        const discountedFee = Math.round(originalFee * 0.90);
+
+        const cleanPhone = (pharmacist.phone || "").replace(/\D/g, '').slice(-10) || "9999999999";
+        const finalPhone = cleanPhone.length === 10 ? cleanPhone : "9999999999";
+
+        // Find or auto-create the patient profile linked to this pharmacist
+        let patient = await Patient.findOne({ user_id: req.user.id });
+        if (!patient) {
+            patient = await Patient.create({
+                user_id: req.user.id,
+                first_name: pharmacist.first_name || "Pharmacist",
+                last_name: pharmacist.last_name || "User",
+                phone: finalPhone,
+                dob: new Date("1990-01-01"),
+                gender: "other",
+                blood_group: "O+",
+                relationship_to_user: "self",
+                emergency_contact_name: pharmacist.first_name || "Pharmacist",
+                emergency_contact_number: finalPhone
+            });
+        }
+
+        const appointment = await Appointment.create({
+            user_id: req.user.id,
+            patient_id: patient._id,
+            doctor_id,
+            appointment_date,
+            appointment_time,
+            consult_mode: consult_mode || "offline",
+            disease,
+            symptoms: Array.isArray(symptoms)
+                ? symptoms
+                : (symptoms ? symptoms.split(",").map(s => s.trim()) : ["Consultation"]),
+            consultation_fee: discountedFee,
+            original_fee: originalFee,
+            payment_status: "pending",
+            payment_method: "upi",
+            status: "pending",
+            booker_role: "pharmacist",
+            awaiting_pharmacist_payment: false
+        });
+
+        res.status(201).json({
+            success: true,
+            message: `Appointment request sent to Dr. ${doctor.first_name} ${doctor.last_name}. Awaiting doctor approval. You will be notified to complete payment once accepted.`,
+            appointment,
+            original_fee: originalFee,
+            discounted_fee: discountedFee,
+            you_save: originalFee - discountedFee
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error booking pharmacist appointment.",
+            error: error.message
+        });
+    }
+};
+
+// ─── STEP 2 ───
+// Doctor confirms a pharmacist appointment → status stays "pending" but
+// awaiting_pharmacist_payment flips to true so the pharmacist knows to pay.
+// This reuses the existing /doctor/:id/confirmed route — we just add the flag.
+// NOTE: no change to confirmAppointment needed; it already sets status="confirmed".
+// Instead, the pharmacist dashboard reads awaiting_pharmacist_payment from the
+// appointment and prompts the pharmacist to pay.
+
+// ─── STEP 3 ───
+// Pharmacist confirms payment → status: "confirmed", payment_status: "paid"
+exports.pharmacistConfirmPayment = async (req, res) => {
+    try {
+        const { payment_method } = req.body;
+
+        const appointment = await Appointment.findById(req.params.id)
+            .populate("doctor_id", "first_name last_name specialization");
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        // Only the pharmacist who booked it can pay
+        if (appointment.user_id !== req.user.id || appointment.booker_role !== "pharmacist") {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+
+        if (appointment.status !== "confirmed") {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot pay for an appointment that is "${appointment.status}". Doctor must confirm first.`
+            });
+        }
+
+        if (appointment.payment_status === "paid") {
+            return res.status(400).json({ success: false, message: "Payment already done." });
+        }
+
+        appointment.payment_status = "paid";
+        appointment.payment_method = payment_method || "upi";
+        appointment.awaiting_pharmacist_payment = false;
+
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Payment of ₹${appointment.consultation_fee} done! Your appointment with Dr. ${appointment.doctor_id?.first_name} ${appointment.doctor_id?.last_name} is now fully scheduled.`,
+            appointment
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error confirming payment.",
+            error: error.message
+        });
+    }
+};
+
+// ─── STEP 2 hook ───
+// When doctor confirms a pharmacist appointment we set awaiting_pharmacist_payment = true.
+// We patch the existing confirmAppointment to handle this case.
+// We create a separate "doctor confirm for pharmacist" controller entry below.
+// (The frontend calls the same /doctor/:id/confirmed route — no extra route needed)
+
+// Pharmacist cancel appointment (before payment / before doctor confirmation)
+exports.pharmacistCancelAppointment = async (req, res) => {
+    try {
+        const { cancel_reason } = req.body;
+
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        if (appointment.user_id !== req.user.id || appointment.booker_role !== "pharmacist") {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+
+        if (!["pending", "confirmed"].includes(appointment.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot cancel an appointment that is already "${appointment.status}".`
+            });
+        }
+
+        if (appointment.payment_status === "paid") {
+            return res.status(400).json({
+                success: false,
+                message: "Payment already made. Contact admin for refund."
+            });
+        }
+
+        appointment.status = "cancelled";
+        appointment.cancelled_by = "pharmacist";
+        appointment.cancel_reason = cancel_reason || "Cancelled by pharmacist";
+        appointment.cancelled_at = new Date();
+
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Appointment cancelled successfully.",
+            appointment
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error cancelling appointment.",
+            error: error.message
+        });
+    }
+};
+
+

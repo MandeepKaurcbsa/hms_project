@@ -11,10 +11,11 @@ const doctorOnly = require("../middleware/doctorMiddleware");
 
 const adminOnly = require("../middleware/adminMiddleware");
 
-// const pharmacistOnly = require("../middleware/pharmacistMiddleware");
+const pharmacistOnly = require("../middleware/pharmacistMiddleware");
+
+const userOrPharmacist = require("../middleware/userOrPharmacistMiddleware");
 
 //----------------------------------request by user ---------------------------------------- 
-
 //book appointment
 router.post("/book", authMiddleware, userOnly, appointmentController.createAppointment);
 
@@ -46,6 +47,19 @@ router.get("/adminAll", authMiddleware, adminOnly, appointmentController.getAllA
 //admin can fetch single appointments
 router.get("/admin/:id", authMiddleware, adminOnly, appointmentController.getAdminSingleAppointment);
 
+//--------------------------------pharmacist side -------------------------------------------
+//pharmacist can fetch all their own appointments
+router.get("/pharmacistAll", authMiddleware, pharmacistOnly, appointmentController.getPharmacistAppointments);
+
+//pharmacist book appointment for doctor consultation (10% discount)
+router.post("/pharmacist/book", authMiddleware, pharmacistOnly, appointmentController.pharmacistBookAppointment);
+
+//pharmacist confirms payment after doctor accepts — STEP 3 (final)
+router.put("/pharmacist/:id/pay", authMiddleware, pharmacistOnly, appointmentController.pharmacistConfirmPayment);
+
+//pharmacist cancels their own appointment
+router.put("/pharmacist/:id/cancel", authMiddleware, pharmacistOnly, appointmentController.pharmacistCancelAppointment);
+
 //--------------------------cancellation api by user -------------------------------------
 
 router.put("/:id/cancel", authMiddleware, userOnly, appointmentController.cancelAppointment);
@@ -57,18 +71,12 @@ router.put("/doctor/:id/cancel", authMiddleware, doctorOnly, appointmentControll
 //-----------------------------cancellation api by admin ----------------------------------
 router.put("/admin/:id/cancel", authMiddleware, adminOnly, appointmentController.adminCancelAppointment);
 
-
-
-//--------------------------------by user------------------------------------------------------
-
-//fetch a single appointment booked by user
-router.get("/:id", authMiddleware, userOnly, appointmentController.getSingleAppointment);
-
 //fetch booked slots for a specific doctor on a specific date (public API for booking modal)
 router.get("/slots/:doctorId/:date", appointmentController.getBookedSlots);
 
-//--------------------------------pharmacist side -------------------------------------------
-//pharmacist can fetch all appointments
-router.get("/pharmacistAll", authMiddleware, appointmentController.getPharmacistAppointments);
+//--------------------------------by user or pharmacist (wildcard — must be LAST) ----------
+
+//fetch a single appointment booked by user OR pharmacist
+router.get("/:id", authMiddleware, userOrPharmacist, appointmentController.getSingleAppointment);
 
 module.exports = router;

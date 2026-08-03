@@ -347,7 +347,11 @@ exports.getDashboardStats = async (req, res) => {
         const allAppointments = await Appointment.find({
             status: "completed"
         });
-        const totalRevenue = allAppointments.reduce((sum, app) => sum + (app.consultation_fee || 0), 0);
+
+        const totalRevenue = allAppointments.reduce(
+            (sum, app) => sum + (app.consultation_fee || 0),
+            0
+        );
 
         // 4. Quick Stats
         const newPatientsToday = await Patient.countDocuments({
@@ -356,20 +360,28 @@ exports.getDashboardStats = async (req, res) => {
                 $lt: tomorrow
             }
         });
+
         const consultationsDone = allAppointments.length;
         const pendingReports = 5; // Placeholder for now
 
         // 5. Recent Appointments List
         const recentAppointmentsList = await Appointment.find()
-        .populate("doctor_id", "first_name last_name")
-        .populate("patient_id", "first_name last_name")
-        .limit(10)
-        .sort({ createdAt: -1 });
+            .select("appointment_time status doctor_id patient_id")
+            .populate("doctor_id", "first_name last_name")
+            .populate("patient_id", "first_name last_name")
+            .sort({ createdAt: -1 })
+            .limit(10);
 
         // Map it for the frontend
         const mappedAppointments = recentAppointmentsList.map(app => {
-            let pName = app.patient_id ? `${app.patient_id.first_name} ${app.patient_id.last_name}` : "Unknown Patient";
-            let dName = app.doctor_id ? `Dr. ${app.doctor_id.first_name} ${app.doctor_id.last_name}` : "Unknown Doctor";
+            const pName = app.patient_id
+                ? `${app.patient_id.first_name} ${app.patient_id.last_name}`
+                : "Unknown Patient";
+
+            const dName = app.doctor_id
+                ? `Dr. ${app.doctor_id.first_name} ${app.doctor_id.last_name}`
+                : "Unknown Doctor";
+
             return {
                 name: pName,
                 time: app.appointment_time,
@@ -385,13 +397,12 @@ exports.getDashboardStats = async (req, res) => {
                 totalPatients,
                 appointmentsToday,
                 totalRevenue,
-                recoveryRate: "94%", // Placeholder
                 quickStats: {
                     newPatientsToday,
                     consultationsDone,
                     pendingReports
                 },
-                todaysAppointmentsList: mappedAppointments
+                recentAppointmentsList: mappedAppointments
             }
         });
 

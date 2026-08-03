@@ -23,6 +23,14 @@ router.get(
     medicineRequestController.getMyMedicineRequests
 );
 
+// Cancel medicine request (Pharmacist)
+router.put(
+    "/cancel/:id",
+    authMiddleware,
+    pharmacistOnly,
+    medicineRequestController.cancelMedicineRequest
+);
+
 // Get single medicine request
 router.get(
     "/:id",

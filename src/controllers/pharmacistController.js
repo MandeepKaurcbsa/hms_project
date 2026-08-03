@@ -187,16 +187,12 @@ exports.updatePharmacistProfile = async (req, res) => {
 
         await pharmacist.save();
 
+        const updatedPharmacist = pharmacist.toObject();
+        delete updatedPharmacist.password;
+
         res.status(200).json({
             message: "Profile updated successfully",
-            pharmacist: {
-                _id: pharmacist._id,
-                first_name: pharmacist.first_name,
-                last_name: pharmacist.last_name,
-                email: pharmacist.email,
-                phone: pharmacist.phone,
-                pharmacy_name: pharmacist.pharmacy_name
-            }
+            pharmacist: updatedPharmacist
         });
 
     } catch (error) {
@@ -341,3 +337,47 @@ exports.verifyPharmacist = async (req, res) => {
         });
     }
 };
+
+// Reset Pharmacist Password (unauthenticated / forgot password)
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, newPassword } = req.body;
+
+        if (!email || !newPassword) {
+            return res.status(400).json({
+                message: "Email and new password are required"
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                message: "New password must be at least 6 characters long"
+            });
+        }
+
+        const pharmacist = await Pharmacist.findOne({ email: email.toLowerCase().trim() });
+
+        if (!pharmacist) {
+            return res.status(404).json({
+                message: "Pharmacist account with this email not found"
+            });
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        pharmacist.password = hashedPassword;
+
+        await pharmacist.save();
+
+        res.status(200).json({
+            message: "Password reset successfully. You can now login with your new password."
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error resetting password",
+            error: error.message
+        });
+    }
+};
+
