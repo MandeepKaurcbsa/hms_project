@@ -2,6 +2,7 @@ const Appointment = require("../models/appointModel");
 const Doctor = require("../models/doctorModel");
 const Patient = require("../models/patientModel");
 const User = require("../models/userModel");
+const { sendAppointmentConfirmedEmail, sendAppointmentRejectedEmail } = require("../services/emailService");
 
 //----------------------------------user side ------------------------------------------ 
 // book appointment
@@ -238,8 +239,27 @@ exports.confirmAppointment = async (req, res) => {
         }
 
         appointment.status = "confirmed";
-
         await appointment.save();
+
+        // Send email to user notifying them to pay
+        try {
+            const user = await User.findById(appointment.user_id);
+            const doctor = await Doctor.findById(appointment.doctor_id);
+            if (user && user.email && doctor) {
+                await sendAppointmentConfirmedEmail({
+                    to: user.email,
+                    userName: `${user.first_name} ${user.last_name}`,
+                    doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    consultFee: appointment.consultation_fee,
+                    appointmentId: appointment._id,
+                    consult_mode: appointment.consult_mode
+                });
+            }
+        } catch (emailErr) {
+            console.error('Email send failed (non-fatal):', emailErr.message);
+        }
 
         res.status(200).json({
             message: "Appointment confirmed successfully",
@@ -279,6 +299,24 @@ exports.rejectAppointment = async (req, res) => {
         appointment.cancel_reason = cancel_reason;
 
         await appointment.save();
+
+        // Send rejection email to user
+        try {
+            const user = await User.findById(appointment.user_id);
+            const doctor = await Doctor.findById(appointment.doctor_id);
+            if (user && user.email && doctor) {
+                await sendAppointmentRejectedEmail({
+                    to: user.email,
+                    userName: `${user.first_name} ${user.last_name}`,
+                    doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    cancelReason: cancel_reason
+                });
+            }
+        } catch (emailErr) {
+            console.error('Rejection email failed (non-fatal):', emailErr.message);
+        }
 
         res.status(200).json({
             message: "Appointment rejected successfully",

@@ -3,6 +3,10 @@ const crypto = require('crypto');
 const Cart = require('../models/cartModel');
 const Medicine = require('../models/medicineModel');
 const Order = require('../models/orderModel');
+const Appointment = require('../models/appointModel');
+const User = require('../models/userModel');
+const Doctor = require('../models/doctorModel');
+const { sendAppointmentPaymentSuccessEmail } = require('../services/emailService');
 
 const razorpayInstance = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -126,6 +130,60 @@ exports.deleteOrder = async (req, res) => {
         res.status(200).json({ success: true, message: 'Order removed successfully' });
     } catch (error) {
         console.error('Error deleting order:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+exports.verifyAppointmentPayment = async (req, res) => {
+    try {
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, appointment_id } = req.body;
+
+        if (!appointment_id) {
+            return res.status(400).json({ success: false, message: 'Appointment ID is required' });
+        }
+
+        const sign = razorpay_order_id + '|' + razorpay_payment_id;
+        const expectedSign = crypto
+            .createHmac('sha256', process.env.RAZORPAY_SECRET)
+            .update(sign.toString())
+            .digest('hex');
+
+        if (razorpay_signature !== expectedSign) {
+            return res.status(400).json({ success: false, message: 'Invalid signature sent!' });
+        }
+
+        // Update appointment payment status
+        const appointment = await Appointment.findById(appointment_id);
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: 'Appointment not found' });
+        }
+
+        appointment.payment_status = 'paid';
+        appointment.payment_method = 'upi';
+        await appointment.save();
+
+        // Send payment success email
+        try {
+            const user = await User.findById(appointment.user_id);
+            const doctor = await Doctor.findById(appointment.doctor_id);
+            if (user && user.email && doctor) {
+                await sendAppointmentPaymentSuccessEmail({
+                    to: user.email,
+                    userName: `${user.first_name} ${user.last_name}`,
+                    doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    consultFee: appointment.consultation_fee,
+                    consult_mode: appointment.consult_mode
+                });
+            }
+        } catch (emailErr) {
+            console.error('Payment success email failed (non-fatal):', emailErr.message);
+        }
+
+        res.status(200).json({ success: true, message: 'Appointment payment verified successfully', appointment });
+    } catch (error) {
+        console.error('Error verifying appointment payment:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
