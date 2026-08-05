@@ -39,9 +39,26 @@ exports.registerUser = async(req, res) => {
             is_verified
         });
 
+        //generates token 
+        const token = jwt.sign(
+            {
+                id : user._id,
+                role : "user"
+            },
+            process.env.JWT_SECRET,
+            {expiresIn : "1d"}
+        );
+
         res.status(201).json({
             message : "User Created Successfully",
-            _id : user._id
+            token,
+            user: {
+                id: user._id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                last_login: user.last_login
+            }
         });
 
     } catch (error) {

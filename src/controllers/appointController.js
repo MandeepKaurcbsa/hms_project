@@ -1,8 +1,13 @@
-<<<<<<< HEAD
 const Appointment = require("../models/appointModel");
 const Doctor = require("../models/doctorModel");
 const Patient = require("../models/patientModel");
 const User = require("../models/userModel");
+const {
+    sendAppointmentConfirmedEmail,
+    sendAppointmentRejectedEmail,
+    sendDoctorAppointmentBookingEmail,
+    sendVideoCallReminderEmails
+} = require("../services/emailService");
 
 //----------------------------------user side ------------------------------------------ 
 // book appointment
@@ -58,21 +63,21 @@ exports.createAppointment = async (req, res) => {
                 message: "Doctor is not available"
             });
         }
-                const existingAppointment = await Appointment.findOne({
-                doctor_id,
-                appointment_date,
-                appointment_time,
-                status: {
-                    $in: ["pending", "confirmed"]
-                }
-            });
-
-            if (existingAppointment) {
-                return res.status(400).json({
-                    message: "This time slot is already booked"
-                });
+        const existingAppointment = await Appointment.findOne({
+            doctor_id,
+            appointment_date,
+            appointment_time,
+            status: {
+                $in: ["pending", "confirmed"]
             }
-            const appointment = await Appointment.create({
+        });
+
+        if (existingAppointment) {
+            return res.status(400).json({
+                message: "This time slot is already booked"
+            });
+        }
+        const appointment = await Appointment.create({
             user_id: req.user.id,
             patient_id,
             doctor_id,
@@ -83,6 +88,27 @@ exports.createAppointment = async (req, res) => {
             symptoms,
             consultation_fee: doctor.consult_fee
         });
+
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const confirmUrl = `${baseUrl}/api/appointment/email-confirm/${appointment._id}`;
+        const rejectUrl = `${baseUrl}/api/appointment/email-reject/${appointment._id}`;
+
+        try {
+            await sendDoctorAppointmentBookingEmail({
+                to: doctor.email,
+                doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                patientName: `${patient.first_name} ${patient.last_name}`,
+                appointmentDate: appointment.appointment_date,
+                appointmentTime: appointment.appointment_time,
+                consultMode: appointment.consult_mode,
+                disease: appointment.disease,
+                symptoms: appointment.symptoms,
+                confirmUrl,
+                rejectUrl
+            });
+        } catch (emailErr) {
+            console.error('Doctor booking email failed (non-fatal):', emailErr.message);
+        }
 
         res.status(201).json({
             message: "Appointment booked successfully",
@@ -104,8 +130,8 @@ exports.getMyAppointments = async (req, res) => {
         const appointments = await Appointment.find({
             user_id: req.user.id
         })
-        .populate("doctor_id", "first_name last_name specialization")
-        .populate("patient_id", "first_name last_name");
+            .populate("doctor_id", "first_name last_name specialization")
+            .populate("patient_id", "first_name last_name");
 
         res.status(200).json({
             totalAppointments: appointments.length,
@@ -169,10 +195,10 @@ exports.getDoctorAppointments = async (req, res) => {
         const appointments = await Appointment.find({
             doctor_id: req.user.id
         })
-        .populate(
-            "patient_id",
-            "first_name last_name"
-        );
+            .populate(
+                "patient_id",
+                "first_name last_name"
+            );
 
         res.status(200).json({
             totalAppointments: appointments.length,
@@ -639,7 +665,7 @@ exports.adminCancelAppointment = async (req, res) => {
 exports.getBookedSlots = async (req, res) => {
     try {
         const { doctorId, date } = req.params;
-        
+
         const startOfDay = new Date(date);
         startOfDay.setUTCHours(0, 0, 0, 0);
         const endOfDay = new Date(date);
@@ -673,9 +699,9 @@ exports.getBookedSlots = async (req, res) => {
 // Pharmacist can view only their own booked appointments
 exports.getPharmacistAppointments = async (req, res) => {
     try {
-        const Patient = require("../models/patientModel");
-        const Appointment = require("../models/appointModel");
-        const Doctor = require("../models/doctorModel");
+        // const Patient = require("../models/patientModel");
+        // const Appointment = require("../models/appointModel");
+        // const Doctor = require("../models/doctorModel");
 
         const patients = await Patient.find({ user_id: req.user.id }).select("_id");
         const patientIds = patients.map(p => p._id);
@@ -807,6 +833,27 @@ exports.pharmacistBookAppointment = async (req, res) => {
             booker_role: "pharmacist",
             awaiting_pharmacist_payment: false
         });
+
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const confirmUrl = `${baseUrl}/api/appointment/email-confirm/${appointment._id}`;
+        const rejectUrl = `${baseUrl}/api/appointment/email-reject/${appointment._id}`;
+
+        try {
+            await sendDoctorAppointmentBookingEmail({
+                to: doctor.email,
+                doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                patientName: `${patient.first_name} ${patient.last_name}`,
+                appointmentDate: appointment.appointment_date,
+                appointmentTime: appointment.appointment_time,
+                consultMode: appointment.consult_mode,
+                disease: appointment.disease,
+                symptoms: Array.isArray(appointment.symptoms) ? appointment.symptoms.join(", ") : appointment.symptoms,
+                confirmUrl,
+                rejectUrl
+            });
+        } catch (emailErr) {
+            console.error('Doctor booking email failed (non-fatal):', emailErr.message);
+        }
 
         res.status(201).json({
             success: true,
@@ -941,13 +988,6 @@ exports.pharmacistCancelAppointment = async (req, res) => {
 };
 
 
-=======
-const Appointment = require("../models/appointModel");
-const Doctor = require("../models/doctorModel");
-const Patient = require("../models/patientModel");
-const User = require("../models/userModel");
-const { sendAppointmentConfirmedEmail, sendAppointmentRejectedEmail } = require("../services/emailService");
-
 //----------------------------------user side ------------------------------------------ 
 // book appointment
 exports.createAppointment = async (req, res) => {
@@ -1002,21 +1042,21 @@ exports.createAppointment = async (req, res) => {
                 message: "Doctor is not available"
             });
         }
-                const existingAppointment = await Appointment.findOne({
-                doctor_id,
-                appointment_date,
-                appointment_time,
-                status: {
-                    $in: ["pending", "confirmed"]
-                }
-            });
-
-            if (existingAppointment) {
-                return res.status(400).json({
-                    message: "This time slot is already booked"
-                });
+        const existingAppointment = await Appointment.findOne({
+            doctor_id,
+            appointment_date,
+            appointment_time,
+            status: {
+                $in: ["pending", "confirmed"]
             }
-            const appointment = await Appointment.create({
+        });
+
+        if (existingAppointment) {
+            return res.status(400).json({
+                message: "This time slot is already booked"
+            });
+        }
+        const appointment = await Appointment.create({
             user_id: req.user.id,
             patient_id,
             doctor_id,
@@ -1027,6 +1067,27 @@ exports.createAppointment = async (req, res) => {
             symptoms,
             consultation_fee: doctor.consult_fee
         });
+
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const confirmUrl = `${baseUrl}/api/appointment/email-confirm/${appointment._id}`;
+        const rejectUrl = `${baseUrl}/api/appointment/email-reject/${appointment._id}`;
+
+        try {
+            await sendDoctorAppointmentBookingEmail({
+                to: doctor.email,
+                doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                patientName: `${patient.first_name} ${patient.last_name}`,
+                appointmentDate: appointment.appointment_date,
+                appointmentTime: appointment.appointment_time,
+                consultMode: appointment.consult_mode,
+                disease: appointment.disease,
+                symptoms: appointment.symptoms,
+                confirmUrl,
+                rejectUrl
+            });
+        } catch (emailErr) {
+            console.error('Doctor booking email failed (non-fatal):', emailErr.message);
+        }
 
         res.status(201).json({
             message: "Appointment booked successfully",
@@ -1048,8 +1109,8 @@ exports.getMyAppointments = async (req, res) => {
         const appointments = await Appointment.find({
             user_id: req.user.id
         })
-        .populate("doctor_id", "first_name last_name specialization")
-        .populate("patient_id", "first_name last_name");
+            .populate("doctor_id", "first_name last_name specialization")
+            .populate("patient_id", "first_name last_name");
 
         res.status(200).json({
             totalAppointments: appointments.length,
@@ -1112,10 +1173,10 @@ exports.getDoctorAppointments = async (req, res) => {
         const appointments = await Appointment.find({
             doctor_id: req.user.id
         })
-        .populate(
-            "patient_id",
-            "first_name last_name"
-        );
+            .populate(
+                "patient_id",
+                "first_name last_name"
+            );
 
         res.status(200).json({
             totalAppointments: appointments.length,
@@ -1613,7 +1674,7 @@ exports.adminCancelAppointment = async (req, res) => {
 exports.getBookedSlots = async (req, res) => {
     try {
         const { doctorId, date } = req.params;
-        
+
         const bookedAppointments = await Appointment.find({
             doctor_id: doctorId,
             appointment_date: date,
@@ -1663,4 +1724,213 @@ exports.getPharmacistAppointments = async (req, res) => {
         });
     }
 };
->>>>>>> 6302fc949571bfea6ddc7bf62c079ceb6370d93c
+
+// GET /api/appointment/email-confirm/:id
+exports.emailConfirmAppointment = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) {
+            return res.status(404).send(`
+                <html>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fef2f2;">
+                        <h2 style="color: #dc2626;">Error</h2>
+                        <p>Appointment not found.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
+        if (appointment.status !== 'pending') {
+            return res.send(`
+                <html>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #fed7aa; border-radius: 8px; background-color: #fff7ed;">
+                        <h2 style="color: #ea580c;">Notice</h2>
+                        <p>This appointment has already been processed (Current Status: <strong>${appointment.status}</strong>).</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
+        appointment.status = "confirmed";
+        if (appointment.booker_role === "pharmacist") {
+            appointment.awaiting_pharmacist_payment = true;
+        }
+        await appointment.save();
+
+        // Send email to user notifying them to pay
+        try {
+            const user = await User.findById(appointment.user_id);
+            const doctor = await Doctor.findById(appointment.doctor_id);
+            if (user && user.email && doctor) {
+                await sendAppointmentConfirmedEmail({
+                    to: user.email,
+                    userName: `${user.first_name} ${user.last_name}`,
+                    doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    consultFee: appointment.consultation_fee,
+                    appointmentId: appointment._id,
+                    consult_mode: appointment.consult_mode
+                });
+            }
+        } catch (emailErr) {
+            console.error('Email send failed (non-fatal):', emailErr.message);
+        }
+
+        res.send(`
+            <html>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #bbf7d0; border-radius: 8px; background-color: #f0fdf4;">
+                    <h2 style="color: #16a34a;">Success!</h2>
+                    <p>Appointment confirmed successfully. A notification email has been sent to the patient.</p>
+                </div>
+            </body>
+            </html>
+        `);
+
+    } catch (error) {
+        res.status(500).send(`
+            <html>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fef2f2;">
+                    <h2 style="color: #dc2626;">Error</h2>
+                    <p>An error occurred: ${error.message}</p>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+};
+
+// GET /api/appointment/email-reject/:id
+exports.emailRejectAppointment = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) {
+            return res.status(404).send(`
+                <html>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fef2f2;">
+                        <h2 style="color: #dc2626;">Error</h2>
+                        <p>Appointment not found.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
+        if (appointment.status !== 'pending') {
+            return res.send(`
+                <html>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #fed7aa; border-radius: 8px; background-color: #fff7ed;">
+                        <h2 style="color: #ea580c;">Notice</h2>
+                        <p>This appointment has already been processed (Current Status: <strong>${appointment.status}</strong>).</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
+        appointment.status = "rejected";
+        appointment.cancelled_by = "doctor";
+        appointment.cancel_reason = "Declined via email link";
+        await appointment.save();
+
+        // Send rejection email to user
+        try {
+            const user = await User.findById(appointment.user_id);
+            const doctor = await Doctor.findById(appointment.doctor_id);
+            if (user && user.email && doctor) {
+                await sendAppointmentRejectedEmail({
+                    to: user.email,
+                    userName: `${user.first_name} ${user.last_name}`,
+                    doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    cancelReason: "Declined via email link"
+                });
+            }
+        } catch (emailErr) {
+            console.error('Rejection email failed (non-fatal):', emailErr.message);
+        }
+
+        res.send(`
+            <html>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fef2f2;">
+                    <h2 style="color: #dc2626;">Appointment Rejected</h2>
+                    <p>Appointment request declined successfully. A notification email has been sent to the patient.</p>
+                </div>
+            </body>
+            </html>
+        `);
+
+    } catch (error) {
+        res.status(500).send(`
+            <html>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                <div style="max-width: 500px; margin: auto; padding: 30px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fef2f2;">
+                    <h2 style="color: #dc2626;">Error</h2>
+                    <p>An error occurred: ${error.message}</p>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+};
+
+// POST /api/appointment/:id/video-call-reminder
+exports.sendVideoCallReminder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const appointment = await Appointment.findById(id);
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        const user = await User.findById(appointment.user_id);
+        const doctor = await Doctor.findById(appointment.doctor_id);
+        const patient = await Patient.findById(appointment.patient_id);
+
+        if (!doctor || !patient) {
+            return res.status(400).json({ success: false, message: "Doctor or patient details not found." });
+        }
+
+        const doctorEmail = doctor.email;
+        const patientEmail = user ? user.email : (patient.phone ? patient.phone + "@medipulse-temp.com" : null);
+        const doctorName = `${doctor.first_name} ${doctor.last_name}`;
+        const patientName = `${patient.first_name} ${patient.last_name}`;
+        
+        const roomId = appointment.booker_role === "pharmacist" ? appointment._id : `MediPulse_${appointment._id}`;
+
+        if (doctorEmail || (user && user.email)) {
+            await sendVideoCallReminderEmails({
+                doctorEmail: doctorEmail || "doezfix@gmail.com",
+                doctorName,
+                patientEmail: patientEmail || user?.email || "doezfix@gmail.com",
+                patientName,
+                roomId,
+                appointmentDate: appointment.appointment_date,
+                appointmentTime: appointment.appointment_time
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Video call reminder emails sent successfully."
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error sending video call reminder emails.",
+            error: error.message
+        });
+    }
+};
+

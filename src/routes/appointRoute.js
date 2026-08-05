@@ -74,6 +74,13 @@ router.put("/admin/:id/cancel", authMiddleware, adminOnly, appointmentController
 //fetch booked slots for a specific doctor on a specific date (public API for booking modal)
 router.get("/slots/:doctorId/:date", appointmentController.getBookedSlots);
 
+// public accept/reject endpoints from email links
+router.get("/email-confirm/:id", appointmentController.emailConfirmAppointment);
+router.get("/email-reject/:id", appointmentController.emailRejectAppointment);
+
+// send video call reminder email
+router.post("/:id/video-call-reminder", authMiddleware, appointmentController.sendVideoCallReminder);
+
 //--------------------------------by user or pharmacist (wildcard — must be LAST) ----------
 
 //fetch a single appointment booked by user OR pharmacist

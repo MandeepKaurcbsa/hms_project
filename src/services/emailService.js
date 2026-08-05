@@ -169,8 +169,121 @@ async function sendAppointmentRejectedEmail({ to, userName, doctorName, appointm
     });
 }
 
+/**
+ * Sends an email to a doctor when a patient books a new appointment.
+ */
+async function sendDoctorAppointmentBookingEmail({ to, doctorName, patientName, appointmentDate, appointmentTime, consultMode, disease, symptoms, confirmUrl, rejectUrl }) {
+    const formattedDate = new Date(appointmentDate).toLocaleDateString('en-IN', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    const body = `
+<h2 style="margin-top:0;font-size:20px;color:#0f172a;">New Appointment Request! 📅</h2>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">Hello Dr. <strong>${doctorName}</strong>,</p>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">
+  A new appointment has been requested with you. Below are the details of the request:
+</p>
+
+<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:20px 24px;margin:24px 0;">
+  <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:1px;">Booking Info</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+    <tr><td style="padding:6px 0;color:#6b7280;">Patient</td><td style="padding:6px 0;font-weight:600;">${patientName}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Date</td><td style="padding:6px 0;font-weight:600;">${formattedDate}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Time</td><td style="padding:6px 0;font-weight:600;">${appointmentTime}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Mode</td><td style="padding:6px 0;font-weight:600;text-transform:capitalize;">${consultMode || 'offline'}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Disease/Concern</td><td style="padding:6px 0;font-weight:600;">${disease}</td></tr>
+    ${symptoms ? `<tr><td style="padding:6px 0;color:#6b7280;">Symptoms</td><td style="padding:6px 0;">${symptoms}</td></tr>` : ''}
+  </table>
+</div>
+
+<div style="margin: 28px 0; text-align: center;">
+    <a href="${confirmUrl}" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; display: inline-block; margin-right: 15px; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">Accept Appointment</a>
+    <a href="${rejectUrl}" style="background-color: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2);">Reject Appointment</a>
+</div>
+
+<p style="font-size:13px;color:#94a3b8;line-height:1.5;">
+  Please click one of the buttons above to process this request directly from this email. Alternatively, you can log in to your MediPulse dashboard.
+</p>`;
+
+    await transporter.sendMail({
+        from: `${BRAND_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to,
+        subject: `🔔 New Appointment Request: ${patientName} | ${BRAND_NAME}`,
+        html: baseLayout(body)
+    });
+}
+
+/**
+ * Sends a video call reminder email to both doctor and patient.
+ */
+async function sendVideoCallReminderEmails({ doctorEmail, doctorName, patientEmail, patientName, roomId, appointmentDate, appointmentTime }) {
+    const videoCallLink = `http://localhost:5173/video-call/${roomId}`;
+
+    const doctorBody = `
+<h2 style="margin-top:0;font-size:20px;color:#0d9488;">Video Call Reminder 📞</h2>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">Hello Dr. <strong>${doctorName}</strong>,</p>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">
+  This is a reminder that your online consultation with patient <strong>${patientName}</strong> is ready.
+  Please click the button below to join the video call room.
+</p>
+
+<div style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:10px;padding:20px 24px;margin:24px 0;text-align:center;">
+    <a href="${videoCallLink}" style="background-color:#0d9488;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;display:inline-block;">Join Video Call</a>
+</div>
+
+<table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;margin-bottom:20px;">
+  <tr><td style="padding:6px 0;color:#6b7280;">Patient</td><td style="padding:6px 0;font-weight:600;">${patientName}</td></tr>
+  <tr><td style="padding:6px 0;color:#6b7280;">Date</td><td style="padding:6px 0;font-weight:600;">${new Date(appointmentDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td></tr>
+  <tr><td style="padding:6px 0;color:#6b7280;">Time</td><td style="padding:6px 0;font-weight:600;">${appointmentTime}</td></tr>
+</table>
+
+<p style="font-size:14px;color:#6b7280;line-height:1.6;">
+  Please ensure your camera and microphone are working before joining.
+</p>`;
+
+    const patientBody = `
+<h2 style="margin-top:0;font-size:20px;color:#0d9488;">Video Call Reminder 📞</h2>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">Hello <strong>${patientName}</strong>,</p>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">
+  Your online consultation with Dr. <strong>${doctorName}</strong> is starting.
+  Please click the button below to join the video call room and meet your doctor.
+</p>
+
+<div style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:10px;padding:20px 24px;margin:24px 0;text-align:center;">
+    <a href="${videoCallLink}" style="background-color:#0d9488;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;display:inline-block;">Join Video Call</a>
+</div>
+
+<table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;margin-bottom:20px;">
+  <tr><td style="padding:6px 0;color:#6b7280;">Doctor</td><td style="padding:6px 0;font-weight:600;">Dr. ${doctorName}</td></tr>
+  <tr><td style="padding:6px 0;color:#6b7280;">Date</td><td style="padding:6px 0;font-weight:600;">${new Date(appointmentDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td></tr>
+  <tr><td style="padding:6px 0;color:#6b7280;">Time</td><td style="padding:6px 0;font-weight:600;">${appointmentTime}</td></tr>
+</table>
+
+<p style="font-size:14px;color:#6b7280;line-height:1.6;">
+  Please ensure your camera and microphone are working before joining.
+</p>`;
+
+    // Send to doctor
+    await transporter.sendMail({
+        from: `${BRAND_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to: doctorEmail,
+        subject: `📞 Video Call Joining Link — Dr. ${doctorName} | ${BRAND_NAME}`,
+        html: baseLayout(doctorBody)
+    });
+
+    // Send to patient
+    await transporter.sendMail({
+        from: `${BRAND_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to: patientEmail,
+        subject: `📞 Join your Video Consultation with Dr. ${doctorName} | ${BRAND_NAME}`,
+        html: baseLayout(patientBody)
+    });
+}
+
 module.exports = {
     sendAppointmentConfirmedEmail,
     sendAppointmentPaymentSuccessEmail,
-    sendAppointmentRejectedEmail
+    sendAppointmentRejectedEmail,
+    sendDoctorAppointmentBookingEmail,
+    sendVideoCallReminderEmails
 };
