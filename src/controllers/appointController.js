@@ -731,7 +731,15 @@ exports.getPharmacistAppointments = async (req, res) => {
 
         const now = new Date();
         for (let appt of appointments) {
-            if (appt.status === "pending" && appt.appointment_date && appt.appointment_time) {
+            if (!appt.appointment_date || !appt.appointment_time) continue;
+
+            const isPending = appt.status === "pending";
+            const isConfirmedUnpaid = (
+                appt.status === "confirmed" &&
+                appt.payment_status !== "paid"
+            );
+
+            if (isPending || isConfirmedUnpaid) {
                 const apptDate = new Date(appt.appointment_date);
                 const [h, m] = (appt.appointment_time || "00:00").split(":").map(Number);
                 apptDate.setHours(h || 0, m || 0, 0, 0);

@@ -82,6 +82,7 @@ const medicineRequestSchema = new mongoose.Schema({
 
     requested_by: {
         type: String,
+        ref: "Pharmacist",
         required: true
     },
 

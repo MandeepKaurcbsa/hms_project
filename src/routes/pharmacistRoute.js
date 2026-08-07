@@ -21,8 +21,10 @@ router.get("/all", authMiddleware, adminOnly, pharmacistController.getAllPharmac
 //get single pharmacist 
  router.get("/:id", authMiddleware, adminOnly, pharmacistController.getSinglePharmacist);
 
+const upload = require("../middleware/uploadMiddleware");
+
 //update pharmacist profile 
-router.put("/profile", authMiddleware, pharmacistOnly, pharmacistController.updatePharmacistProfile);
+router.put("/profile", authMiddleware, pharmacistOnly, upload.single("profile_img"), pharmacistController.updatePharmacistProfile);
 
 //change password of pharmacist 
 router.put("/change-password", authMiddleware, pharmacistOnly, pharmacistController.changePassword);

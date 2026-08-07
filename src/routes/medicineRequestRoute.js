@@ -7,38 +7,15 @@ const authMiddleware = require("../middleware/authMiddleware");
 const pharmacistOnly = require("../middleware/pharmacistMiddleware");
 const adminOnly = require("../middleware/adminMiddleware");
 
-// Create Medicine Request
-router.post(
-    "/create",
-    authMiddleware,
-    pharmacistOnly,
-    medicineRequestController.createMedicineRequest
-);
-
-// Get all medicine requests submitted by logged-in pharmacist
+// 1. Get all medicine requests (Admin)
 router.get(
-    "/my-requests",
+    "/",
     authMiddleware,
-    pharmacistOnly,
-    medicineRequestController.getMyMedicineRequests
+    adminOnly,
+    medicineRequestController.getAllMedicineRequests
 );
 
-// Cancel medicine request (Pharmacist)
-router.put(
-    "/cancel/:id",
-    authMiddleware,
-    pharmacistOnly,
-    medicineRequestController.cancelMedicineRequest
-);
-
-// Get single medicine request
-router.get(
-    "/:id",
-    authMiddleware,
-    medicineRequestController.getSingleMedicineRequest
-);
-
-// Get all pending medicine requests (Admin)
+// 2. Get all pending medicine requests (Admin)
 router.get(
     "/pending",
     authMiddleware,
@@ -46,7 +23,23 @@ router.get(
     medicineRequestController.getPendingMedicineRequests
 );
 
-// Approve medicine request (Admin)
+// 3. Get all medicine requests submitted by logged-in pharmacist
+router.get(
+    "/my-requests",
+    authMiddleware,
+    pharmacistOnly,
+    medicineRequestController.getMyMedicineRequests
+);
+
+// 4. Create Medicine Request (Pharmacist)
+router.post(
+    "/create",
+    authMiddleware,
+    pharmacistOnly,
+    medicineRequestController.createMedicineRequest
+);
+
+// 5. Approve medicine request (Admin)
 router.put(
     "/approve/:id",
     authMiddleware,
@@ -54,7 +47,7 @@ router.put(
     medicineRequestController.approveMedicineRequest
 );
 
-// Reject medicine request (Admin)
+// 6. Reject medicine request (Admin)
 router.put(
     "/reject/:id",
     authMiddleware,
@@ -62,12 +55,19 @@ router.put(
     medicineRequestController.rejectMedicineRequest
 );
 
-// Get all medicine requests (Admin)
-router.get(
-    "/",
+// 7. Cancel medicine request (Pharmacist)
+router.put(
+    "/cancel/:id",
     authMiddleware,
-    adminOnly,
-    medicineRequestController.getAllMedicineRequests
+    pharmacistOnly,
+    medicineRequestController.cancelMedicineRequest
+);
+
+// 8. Get single medicine request by ID (Must be last to avoid route collision!)
+router.get(
+    "/:id",
+    authMiddleware,
+    medicineRequestController.getSingleMedicineRequest
 );
 
 module.exports = router;

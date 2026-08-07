@@ -8,9 +8,13 @@ const {
     createAdmin,
     adminLogin,
     getAdminProfile,
+    changeAdminPassword,
+    resetAdminPassword,
+    updateAdminProfile,
     addDoctor,
     updateDoctorProfile,
     addPharmacist,
+    updatePharmacistProfile,
     getDashboardStats
 } = require("../controllers/adminController");
 
@@ -24,8 +28,17 @@ router.post("/register", createAdmin);
 //admin login
 router.post("/login", adminLogin);
 
+//admin reset password (forgot password)
+router.put("/reset-password", resetAdminPassword);
+
 //admin profile fetch
 router.get("/profile", authMiddleware, adminOnly, getAdminProfile);
+
+//update admin profile
+router.put("/update-profile", authMiddleware, adminOnly, updateAdminProfile);
+
+//change admin password
+router.put("/change-password", authMiddleware, adminOnly, changeAdminPassword);
 
 //add doctor
 router.post(
@@ -46,7 +59,21 @@ router.put(
 );
 
 //add pharmacist
-router.post("/add-pharmacist", authMiddleware, adminOnly, addPharmacist);
+router.post(
+    "/add-pharmacist",
+    authMiddleware,
+    adminOnly,
+    upload.single("profile_img"),
+    addPharmacist
+);
+
+//update pharmacist profile
+router.put(
+    "/update-pharmacist-profile/:pharmacistId",
+    authMiddleware,
+    adminOnly,
+    updatePharmacistProfile
+);
 
 //get dashboard stats
 router.get("/dashboard-stats", authMiddleware, adminOnly, getDashboardStats);

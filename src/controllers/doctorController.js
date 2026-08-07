@@ -1,6 +1,7 @@
 const Doctor = require("../models/doctorModel");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const cloudinary = require("../config/cloudinary");
 
 // Doctor Login
 exports.doctorLogin = async (req, res) => {
@@ -185,7 +186,6 @@ exports.getAllDoctors = async (req, res) => {
 // update doctor profile
 exports.updateDoctorProfile = async (req, res) => {
     try {
-
         const {
             phone,
             profile_img,
@@ -205,29 +205,40 @@ exports.updateDoctorProfile = async (req, res) => {
             });
         }
 
+        let profileImgUrl = doctor.profile_img;
+
+        if (req.file) {
+            const b64 = Buffer.from(req.file.buffer).toString('base64');
+            let dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            const result = await cloudinary.uploader.upload(dataURI, {
+                folder: 'medipulse/doctors'
+            });
+            profileImgUrl = result.secure_url;
+        } else if (profile_img) {
+            profileImgUrl = profile_img;
+        }
+
         // update allowed fields only
-
         if (phone) doctor.phone = phone;
+        if (profileImgUrl) doctor.profile_img = profileImgUrl;
+        if (consult_fee !== undefined) doctor.consult_fee = consult_fee;
+        if (consult_mode) doctor.consult_mode = consult_mode;
 
-        if (profile_img) doctor.profile_img = profile_img;
+        if (available_days) {
+            let parsedDays = available_days;
+            if (typeof available_days === 'string') {
+                try {
+                    parsedDays = JSON.parse(available_days);
+                } catch (e) {
+                    parsedDays = available_days.split(',').map(d => d.trim());
+                }
+            }
+            doctor.available_days = parsedDays;
+        }
 
-        if (consult_fee !== undefined)
-            doctor.consult_fee = consult_fee;
-
-        if (consult_mode)
-            doctor.consult_mode = consult_mode;
-
-        if (available_days)
-            doctor.available_days = available_days;
-
-        if (work_time_start)
-            doctor.work_time_start = work_time_start;
-
-        if (work_time_end)
-            doctor.work_time_end = work_time_end;
-
-        if (visit_address)
-            doctor.visit_address = visit_address;
+        if (work_time_start) doctor.work_time_start = work_time_start;
+        if (work_time_end) doctor.work_time_end = work_time_end;
+        if (visit_address) doctor.visit_address = visit_address;
 
         await doctor.save();
 

@@ -24,8 +24,10 @@ router.get("/all", authMiddleware, adminOnly, doctorController.getAllDoctors);
 //fetch single doctor profile by admin
 router.get("/:id", authMiddleware, adminOnly, doctorController.getSingleDoctor);
 
+const upload = require("../middleware/uploadMiddleware");
+
 //update doctor's profile
-router.put("/profile", authMiddleware, doctorOnly, doctorController.updateDoctorProfile); 
+router.put("/profile", authMiddleware, doctorOnly, upload.single("profile_img"), doctorController.updateDoctorProfile); 
 
 //update password
 router.put("/change-password", authMiddleware, doctorOnly, doctorController.changePassword);

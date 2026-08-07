@@ -1,5 +1,6 @@
 const Medicine = require("../models/medicineModel");
 const MedicineRequest = require("../models/medicineRequestModel");
+const Pharmacist = require("../models/pharmacistModel");
 
 exports.createMedicineRequest = async (req, res) => {
     try {
@@ -195,8 +196,22 @@ exports.getPendingMedicineRequests = async (req, res) => {
         const pendingRequests = await MedicineRequest.find({
             status: "Pending"
         })
+        .populate("requested_by", "first_name last_name pharmacy_name email phone")
         .select("-__v")
+        .lean()
         .sort({ createdAt: -1 });
+
+        for (let reqObj of pendingRequests) {
+            if (!reqObj.requested_by || typeof reqObj.requested_by === 'string') {
+                const phId = reqObj.requested_by;
+                if (phId) {
+                    const phDoc = await Pharmacist.findById(phId).select("first_name last_name pharmacy_name email phone");
+                    if (phDoc) {
+                        reqObj.requested_by = phDoc;
+                    }
+                }
+            }
+        }
 
         return res.status(200).json({
             success: true,
@@ -238,35 +253,36 @@ exports.approveMedicineRequest = async (req, res) => {
             });
         }
 
-        // Check whether medicine already exists
+        // Check whether medicine already exists in inventory
+        let medicineObj;
         const existingMedicine = await Medicine.findOne({
             medicine_name: medicineRequest.medicine_name,
             strength: medicineRequest.strength
         });
 
         if (existingMedicine) {
-            return res.status(409).json({
-                success: false,
-                message: "Medicine already exists in the system."
+            existingMedicine.stock_available = (existingMedicine.stock_available || 0) + (medicineRequest.stock_available || 0);
+            if (medicineRequest.price) existingMedicine.price = medicineRequest.price;
+            await existingMedicine.save();
+            medicineObj = existingMedicine;
+        } else {
+            // Create new medicine
+            medicineObj = await Medicine.create({
+                medicine_name: medicineRequest.medicine_name,
+                generic_name: medicineRequest.generic_name,
+                category: medicineRequest.category,
+                manufacturer: medicineRequest.manufacturer,
+                strength: medicineRequest.strength,
+                unit: medicineRequest.unit,
+                price: medicineRequest.price,
+                stock_available: medicineRequest.stock_available,
+                description: medicineRequest.description,
+                medicine_image: medicineRequest.medicine_image,
+                requires_prescription: medicineRequest.requires_prescription,
+                mfg_date: medicineRequest.mfg_date,
+                expiry_date: medicineRequest.expiry_date
             });
         }
-
-        // Create medicine
-        const newMedicine = await Medicine.create({
-            medicine_name: medicineRequest.medicine_name,
-            generic_name: medicineRequest.generic_name,
-            category: medicineRequest.category,
-            manufacturer: medicineRequest.manufacturer,
-            strength: medicineRequest.strength,
-            unit: medicineRequest.unit,
-            price: medicineRequest.price,
-            stock_available: medicineRequest.stock_available,
-            description: medicineRequest.description,
-            medicine_image: medicineRequest.medicine_image,
-            requires_prescription: medicineRequest.requires_prescription,
-            mfg_date: medicineRequest.mfg_date,
-            expiry_date: medicineRequest.expiry_date
-        });
 
         // Update request status
         medicineRequest.status = "Approved";
@@ -280,7 +296,7 @@ exports.approveMedicineRequest = async (req, res) => {
             message: "Medicine request approved successfully.",
             data: {
                 request: medicineRequest,
-                medicine: newMedicine
+                medicine: medicineObj
             }
         });
 
@@ -356,8 +372,22 @@ exports.getAllMedicineRequests = async (req, res) => {
         }
 
         const medicineRequests = await MedicineRequest.find(filter)
+            .populate("requested_by", "first_name last_name pharmacy_name email phone")
             .select("-__v")
+            .lean()
             .sort({ createdAt: -1 });
+
+        for (let reqObj of medicineRequests) {
+            if (!reqObj.requested_by || typeof reqObj.requested_by === 'string') {
+                const phId = reqObj.requested_by;
+                if (phId) {
+                    const phDoc = await Pharmacist.findById(phId).select("first_name last_name pharmacy_name email phone");
+                    if (phDoc) {
+                        reqObj.requested_by = phDoc;
+                    }
+                }
+            }
+        }
 
         return res.status(200).json({
             success: true,

@@ -1,6 +1,7 @@
 const Pharmacist = require("../models/pharmacistModel");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const cloudinary = require("../config/cloudinary");
 
 // Pharmacist Login
 exports.pharmacistLogin = async (req, res) => {
@@ -157,13 +158,21 @@ exports.getAllPharmacists = async (req, res) => {
 // Update Pharmacist Profile
 exports.updatePharmacistProfile = async (req, res) => {
     try {
-
         const pharmacist = await Pharmacist.findById(req.user.id);
 
         if (!pharmacist) {
             return res.status(404).json({
                 message: "Pharmacist not found"
             });
+        }
+
+        if (req.file) {
+            const b64 = Buffer.from(req.file.buffer).toString('base64');
+            let dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            const result = await cloudinary.uploader.upload(dataURI, {
+                folder: 'medipulse/pharmacists'
+            });
+            pharmacist.profile_img = result.secure_url;
         }
 
         const allowedUpdates = [
@@ -181,7 +190,15 @@ exports.updatePharmacistProfile = async (req, res) => {
 
         allowedUpdates.forEach(field => {
             if (req.body[field] !== undefined) {
-                pharmacist[field] = req.body[field];
+                if (field === "working_days" && typeof req.body[field] === "string") {
+                    try {
+                        pharmacist[field] = JSON.parse(req.body[field]);
+                    } catch (e) {
+                        pharmacist[field] = req.body[field].split(',').map(d => d.trim()).filter(Boolean);
+                    }
+                } else {
+                    pharmacist[field] = req.body[field];
+                }
             }
         });
 
