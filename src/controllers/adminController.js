@@ -428,7 +428,6 @@ exports.addPharmacist = async (req,res) => {
             license_no,
             address,
             profile_img,
-            working_days,
             work_time_start,
             work_time_end,
             status,
