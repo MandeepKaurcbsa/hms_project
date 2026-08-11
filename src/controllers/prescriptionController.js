@@ -204,7 +204,10 @@ exports.getMyPrescriptions = async (req, res) => {
 
             doctor_id
 
-        }).sort({
+        })
+        .populate("patient_id", "first_name last_name age gender phone email address")
+        .populate("appointment_id")
+        .sort({
 
             prescribed_date: -1
 

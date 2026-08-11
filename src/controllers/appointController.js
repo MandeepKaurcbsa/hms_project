@@ -171,12 +171,23 @@ exports.getDoctorAppointments = async (req, res) => {
         })
         .populate(
             "patient_id",
-            "first_name last_name"
-        );
+            "first_name last_name age gender phone email address blood_group"
+        )
+        .sort({ createdAt: -1 });
+
+        const userIds = [...new Set(appointments.map(a => a.user_id).filter(Boolean))];
+        const users = await User.find({ _id: { $in: userIds } }).select("first_name last_name email phone");
+        const userMap = {};
+        users.forEach(u => { userMap[u._id] = u; });
+
+        const enriched = appointments.map(a => ({
+            ...a.toObject(),
+            booked_by: userMap[a.user_id] || null
+        }));
 
         res.status(200).json({
-            totalAppointments: appointments.length,
-            appointments
+            totalAppointments: enriched.length,
+            appointments: enriched
         });
 
     } catch (error) {

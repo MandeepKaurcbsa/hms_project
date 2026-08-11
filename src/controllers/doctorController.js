@@ -189,6 +189,7 @@ exports.updateDoctorProfile = async (req, res) => {
         const {
             phone,
             profile_img,
+            signature,
             consult_fee,
             consult_mode,
             available_days,
@@ -207,21 +208,53 @@ exports.updateDoctorProfile = async (req, res) => {
 
         let profileImgUrl = doctor.profile_img;
 
-        if (req.file) {
-            const b64 = Buffer.from(req.file.buffer).toString('base64');
-            let dataURI = "data:" + req.file.mimetype + ";base64," + b64;
-            const result = await cloudinary.uploader.upload(dataURI, {
-                folder: 'medipulse/doctors'
-            });
-            profileImgUrl = result.secure_url;
-        } else if (profile_img) {
-            profileImgUrl = profile_img;
+        try {
+            if (req.files?.profile_img?.[0]) {
+                const b64 = Buffer.from(req.files.profile_img[0].buffer).toString('base64');
+                let dataURI = "data:" + req.files.profile_img[0].mimetype + ";base64," + b64;
+                const result = await cloudinary.uploader.upload(dataURI, { folder: 'medipulse/doctors' });
+                profileImgUrl = result.secure_url;
+            } else if (req.file) {
+                const b64 = Buffer.from(req.file.buffer).toString('base64');
+                let dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+                const result = await cloudinary.uploader.upload(dataURI, { folder: 'medipulse/doctors' });
+                profileImgUrl = result.secure_url;
+            } else if (profile_img) {
+                profileImgUrl = profile_img;
+            }
+        } catch (imgErr) {
+            console.error("Cloudinary profile_img upload error:", imgErr.message);
+            if (profile_img) profileImgUrl = profile_img;
+        }
+
+        let signatureUrl = doctor.signature || "";
+        if (req.files?.signature?.[0]) {
+            const b64 = Buffer.from(req.files.signature[0].buffer).toString('base64');
+            let dataURI = "data:" + req.files.signature[0].mimetype + ";base64," + b64;
+            try {
+                const result = await cloudinary.uploader.upload(dataURI, { folder: 'medipulse/signatures' });
+                signatureUrl = result.secure_url;
+            } catch (e) {
+                console.error("Cloudinary signature file upload error:", e.message);
+                signatureUrl = dataURI;
+            }
+        } else if (signature && typeof signature === 'string' && signature.startsWith('data:image/')) {
+            try {
+                const result = await cloudinary.uploader.upload(signature, { folder: 'medipulse/signatures' });
+                signatureUrl = result.secure_url;
+            } catch (e) {
+                console.error("Cloudinary signature base64 upload error:", e.message);
+                signatureUrl = signature;
+            }
+        } else if (signature !== undefined) {
+            signatureUrl = signature;
         }
 
         // update allowed fields only
         if (phone) doctor.phone = phone;
         if (profileImgUrl) doctor.profile_img = profileImgUrl;
-        if (consult_fee !== undefined) doctor.consult_fee = consult_fee;
+        if (signatureUrl !== undefined) doctor.signature = signatureUrl;
+        if (consult_fee !== undefined) doctor.consult_fee = Number(consult_fee);
         if (consult_mode) doctor.consult_mode = consult_mode;
 
         if (available_days) {
@@ -242,13 +275,16 @@ exports.updateDoctorProfile = async (req, res) => {
 
         await doctor.save();
 
-        res.status(200).json({
+        return res.status(200).json({
+            success: true,
             message: "Profile updated successfully",
             doctor
         });
 
     } catch (error) {
-        res.status(500).json({
+        console.error("Error updating doctor profile:", error);
+        return res.status(500).json({
+            success: false,
             message: "Error updating profile",
             error: error.message
         });

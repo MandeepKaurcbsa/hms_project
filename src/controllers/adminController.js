@@ -10,7 +10,7 @@ const Appointment = require("../models/appointModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const cloudinary = require("../config/cloudinary");
- 
+
 // Create Admin
 exports.createAdmin = async (req, res) => {
     try {
@@ -59,7 +59,7 @@ exports.createAdmin = async (req, res) => {
 //Admin login 
 exports.adminLogin = async (req, res) => {
     try {
-        const {email, password} = req.body;
+        const { email, password } = req.body;
         if (!email || !password) {
             return res.status(400).json({
                 message: "Please enter both email and password"
@@ -70,38 +70,38 @@ exports.adminLogin = async (req, res) => {
 
         // checks if admin is there or not 
         const admin = await Admin.findOne({ email: cleanEmail });
-        if(!admin){
+        if (!admin) {
             return res.status(400).json({
-                message : "Invalid email or password"
+                message: "Invalid email or password"
             });
         }
         //compares password
         const isMatch = await bcrypt.compare(password, admin.password);
-        if(!isMatch){
+        if (!isMatch) {
             return res.status(400).json({
-                message : "Invalid email or password"
+                message: "Invalid email or password"
             });
         }
 
         //generates token 
         const token = jwt.sign(
             {
-                id : admin._id,
-                role : "admin"
+                id: admin._id,
+                role: "admin"
             },
             process.env.JWT_SECRET,
-            {expiresIn : "1d"}
+            { expiresIn: "1d" }
         );
 
         res.status(200).json({
-            message : "Admin login successfull",
+            message: "Admin login successfull",
             token
         });
 
     } catch (error) {
         res.status(500).json({
-            message : "Error logging in admin",
-            error : error.message
+            message: "Error logging in admin",
+            error: error.message
         });
     }
 };
@@ -111,9 +111,9 @@ exports.getAdminProfile = async (req, res) => {
     try {
         const admin = await Admin.findById(req.user.id).select("-password");
 
-        if(!admin){
+        if (!admin) {
             return res.status(400).json({
-                message : "Admin not found"
+                message: "Admin not found"
             });
         }
 
@@ -121,8 +121,8 @@ exports.getAdminProfile = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({
-            message : "Error fetching admin profile",
-            error : error.message
+            message: "Error fetching admin profile",
+            error: error.message
         });
     }
 };
@@ -298,7 +298,7 @@ exports.addDoctor = async (req, res) => {
             status,
             is_verified
         } = req.body;
-        
+
         let available_days = req.body.available_days;
         if (typeof available_days === 'string') {
             try {
@@ -321,23 +321,23 @@ exports.addDoctor = async (req, res) => {
         }
 
         //checking if doctor exists 
-        const doctorExists = await Doctor.findOne({email});
+        const doctorExists = await Doctor.findOne({ email });
 
-        if(doctorExists){
+        if (doctorExists) {
             return res.status(400).json({
-                message : "Doctor already exists"
+                message: "Doctor already exists"
             });
         }
 
         //hash password
         const hashed = await bcrypt.hash(password, 10);
-        
+
         //create doctor
         const doctor = await Doctor.create({
             first_name,
             last_name,
             email,
-            password : hashed,
+            password: hashed,
             phone,
             profile_img: profileImgUrl,
             license_no,
@@ -356,14 +356,14 @@ exports.addDoctor = async (req, res) => {
         });
 
         res.status(201).json({
-            message : "Doctor added successfully",
-            _id : doctor._id
+            message: "Doctor added successfully",
+            _id: doctor._id
         });
 
     } catch (error) {
         res.status(500).json({
-            message : "Error adding doctor",
-            error : error.message 
+            message: "Error adding doctor",
+            error: error.message
         });
     }
 };
@@ -372,7 +372,7 @@ exports.addDoctor = async (req, res) => {
 exports.updateDoctorProfile = async (req, res) => {
     try {
         const { doctorId } = req.params;
-        
+
         const doctor = await Doctor.findById(doctorId);
         if (!doctor) {
             return res.status(404).json({ message: "Doctor not found" });
@@ -415,7 +415,7 @@ exports.updateDoctorProfile = async (req, res) => {
 
 //add pharmacist 
 
-exports.addPharmacist = async (req,res) => {
+exports.addPharmacist = async (req, res) => {
     try {
         const {
             first_name,
@@ -428,7 +428,6 @@ exports.addPharmacist = async (req,res) => {
             license_no,
             address,
             profile_img,
-            working_days,
             work_time_start,
             work_time_end,
             status,
@@ -456,10 +455,10 @@ exports.addPharmacist = async (req,res) => {
         }
 
         //checking if pharmacist exists 
-        const pharmacistExists = await Pharmacist.findOne({email});
-        if(pharmacistExists){
+        const pharmacistExists = await Pharmacist.findOne({ email });
+        if (pharmacistExists) {
             return res.status(400).json({
-                message : "Pharmacist already exists"
+                message: "Pharmacist already exists"
             });
         }
 
@@ -471,7 +470,7 @@ exports.addPharmacist = async (req,res) => {
             first_name,
             last_name,
             email,
-            password : hashed,
+            password: hashed,
             phone,
             pharmacy_name,
             qualification,
@@ -486,14 +485,14 @@ exports.addPharmacist = async (req,res) => {
         });
 
         res.status(201).json({
-            message : "Pharmacist added Successfully",
-            _id : pharmacist._id
+            message: "Pharmacist added Successfully",
+            _id: pharmacist._id
         });
 
     } catch (error) {
         res.status(500).json({
-            message : "Error adding pharmacist",
-            error : error.message
+            message: "Error adding pharmacist",
+            error: error.message
         });
     }
 };

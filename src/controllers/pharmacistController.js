@@ -176,16 +176,13 @@ exports.updatePharmacistProfile = async (req, res) => {
         }
 
         const allowedUpdates = [
-            "first_name",
-            "last_name",
             "phone",
             "address",
             "profile_img",
             "working_days",
             "work_time_start",
             "work_time_end",
-            "pharmacy_name",
-            "qualification"
+            "pharmacy_name"
         ];
 
         allowedUpdates.forEach(field => {

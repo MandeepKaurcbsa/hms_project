@@ -96,6 +96,10 @@ const doctorSchema = new mongoose.Schema({
         default : false,
         required : true
     },
+    signature : {
+        type : String,
+        default : ""
+    },
 },{
     timestamps : true
 });
