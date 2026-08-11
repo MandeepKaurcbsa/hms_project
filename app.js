@@ -60,6 +60,9 @@ app.use("/prescription", prescriptionRoutes);
 const paymentRoutes = require("./src/routes/paymentRoute");
 app.use("/api/payment", paymentRoutes);
 
+const deliveryRoutes = require("./src/routes/deliveryRoute");
+app.use("/delivery", deliveryRoutes);
+
 //basic test route
 app.get("/", (req, res) => {
     res.send("Api is running...");

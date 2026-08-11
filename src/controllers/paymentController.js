@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const Cart = require('../models/cartModel');
 const Medicine = require('../models/medicineModel');
 const Order = require('../models/orderModel');
+const DeliveryBoy = require('../models/deliveryBoyModel');
 const Appointment = require('../models/appointModel');
 const User = require('../models/userModel');
 const Doctor = require('../models/doctorModel');
@@ -37,7 +38,7 @@ exports.createOrder = async (req, res) => {
 
 exports.verifyPayment = async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, delivery_address } = req.body;
 
         const sign = razorpay_order_id + '|' + razorpay_payment_id;
         const expectedSign = crypto
@@ -82,18 +83,27 @@ exports.verifyPayment = async (req, res) => {
             total_quantity += cartItem.quantity;
         }
 
-        // Save the order
+        // Auto-assign delivery boy
+        const availableBoy = await DeliveryBoy.findOne({ status: 'available' });
+        
         const newOrder = new Order({
             user_id,
+            delivery_boy_id: availableBoy ? availableBoy._id : null,
             razorpay_order_id,
             razorpay_payment_id,
             items: orderItems,
             total_items: orderItems.length,
             total_quantity,
             grand_total,
-            status: 'paid'
+            status: 'paid',
+            delivery_address: delivery_address || {}
         });
         await newOrder.save();
+
+        if (availableBoy) {
+            availableBoy.status = 'busy';
+            await availableBoy.save();
+        }
 
         // Clear the user's cart
         cart.items = [];
@@ -130,6 +140,52 @@ exports.deleteOrder = async (req, res) => {
         res.status(200).json({ success: true, message: 'Order removed successfully' });
     } catch (error) {
         console.error('Error deleting order:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+exports.getAllOrders = async (req, res) => {
+    try {
+        const orders = await Order.find().populate('user_id', 'first_name last_name email').sort({ placed_at: -1 });
+        res.status(200).json({ success: true, orders });
+    } catch (error) {
+        console.error('Error fetching all orders:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+exports.updateOrderStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        const validStatuses = ['pending', 'paid', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        order.status = status;
+        
+        // update tracking timestamps
+        if (!order.tracking) {
+            order.tracking = {};
+        }
+        
+        if (status === 'processing') order.tracking.processing_at = new Date();
+        if (status === 'shipped') order.tracking.shipped_at = new Date();
+        if (status === 'out_for_delivery') order.tracking.out_for_delivery_at = new Date();
+        if (status === 'delivered') order.tracking.delivered_at = new Date();
+
+        await order.save();
+
+        res.status(200).json({ success: true, message: 'Order status updated', order });
+    } catch (error) {
+        console.error('Error updating order status:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
