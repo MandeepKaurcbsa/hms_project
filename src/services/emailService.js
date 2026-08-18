@@ -169,8 +169,53 @@ async function sendAppointmentRejectedEmail({ to, userName, doctorName, appointm
     });
 }
 
+/**
+ * Sends a Delivery OTP email when an order status changes to "out_for_delivery".
+ */
+async function sendDeliveryOtpEmail({ to, userName, orderId, otp, estimatedMinutes, address, deliveryBoyName, deliveryBoyPhone }) {
+    const formattedAddress = address ? `${address.street || ''}, ${address.city || ''}, ${address.state || ''} ${address.zip_code || ''}`.trim() : 'Your Address';
+    const etaTime = new Date(Date.now() + (estimatedMinutes || 25) * 60000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    const body = `
+<h2 style="margin-top:0;font-size:20px;color:#0f172a;">🚚 Your MediPulse Order is Out for Delivery!</h2>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">Hello <strong>${userName}</strong>,</p>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">
+  Your order <strong>#${(orderId || '').slice(-8).toUpperCase()}</strong> has been dispatched and is on its way to your delivery address!
+</p>
+
+<!-- OTP Highlight Box -->
+<div style="background:#f0fdf4;border:2px dashed #16a34a;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+  <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:1px;">Your Delivery Verification OTP</p>
+  <div style="font-size:36px;font-weight:900;letter-spacing:8px;color:#16a34a;margin:8px 0;font-family:monospace;">${otp}</div>
+  <p style="margin:8px 0 0;font-size:13px;color:#166534;">Please share this 6-digit OTP with your delivery executive upon arrival to receive your package.</p>
+</div>
+
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#0d9488;text-transform:uppercase;letter-spacing:1px;">Delivery Details</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+    <tr><td style="padding:6px 0;color:#6b7280;">Estimated Delivery</td><td style="padding:6px 0;font-weight:700;color:#0d9488;">~${estimatedMinutes || 25} Mins (by ${etaTime})</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Delivery Agent</td><td style="padding:6px 0;font-weight:600;">${deliveryBoyName || 'Assigned Partner'}</td></tr>
+    ${deliveryBoyPhone ? `<tr><td style="padding:6px 0;color:#6b7280;">Contact Agent</td><td style="padding:6px 0;font-weight:600;">📞 ${deliveryBoyPhone}</td></tr>` : ''}
+    <tr><td style="padding:6px 0;color:#6b7280;">Deliver To</td><td style="padding:6px 0;font-weight:500;">${formattedAddress}</td></tr>
+  </table>
+</div>
+
+<p style="font-size:14px;color:#6b7280;line-height:1.6;">
+  Thank you for choosing <strong style="color:${BRAND_COLOR};">${BRAND_NAME}</strong>. If you did not place this order, please contact our support immediately.
+</p>`;
+
+    await transporter.sendMail({
+        from: `${BRAND_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to,
+        subject: `🚚 Out for Delivery! Your Delivery OTP is ${otp} | ${BRAND_NAME}`,
+        html: baseLayout(body)
+    });
+}
+
 module.exports = {
     sendAppointmentConfirmedEmail,
     sendAppointmentPaymentSuccessEmail,
-    sendAppointmentRejectedEmail
+    sendAppointmentRejectedEmail,
+    sendDeliveryOtpEmail
 };
+

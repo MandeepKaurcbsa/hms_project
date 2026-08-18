@@ -24,6 +24,16 @@ const orderSchema = new mongoose.Schema({
         state: { type: String, default: '' },
         zip_code: { type: String, default: '' }
     },
+    payment_mode: {
+        type: String,
+        enum: ['COD', 'UPI', 'CARD', 'ONLINE'],
+        default: 'UPI'
+    },
+    payment_status: {
+        type: String,
+        enum: ['pending', 'paid', 'failed'],
+        default: 'paid'
+    },
     status: {
         type: String,
         enum: ['pending', 'paid', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'],
@@ -35,6 +45,10 @@ const orderSchema = new mongoose.Schema({
         out_for_delivery_at: { type: Date },
         delivered_at: { type: Date }
     },
+    delivery_otp: { type: String, default: null },
+    is_otp_verified: { type: Boolean, default: false },
+    estimated_delivery_minutes: { type: Number, default: 30 },
+    estimated_delivery_time: { type: Date, default: null },
     placed_at: { type: Date, default: Date.now }
 }, { timestamps: true });
 

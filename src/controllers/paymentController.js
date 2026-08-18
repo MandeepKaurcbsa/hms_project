@@ -91,6 +91,8 @@ exports.verifyPayment = async (req, res) => {
             delivery_boy_id: availableBoy ? availableBoy._id : null,
             razorpay_order_id,
             razorpay_payment_id,
+            payment_mode: 'UPI',
+            payment_status: 'paid',
             items: orderItems,
             total_items: orderItems.length,
             total_quantity,
@@ -112,6 +114,73 @@ exports.verifyPayment = async (req, res) => {
         res.status(200).json({ success: true, message: 'Payment verified and order placed successfully' });
     } catch (error) {
         console.error('Error verifying payment:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+exports.placeCodOrder = async (req, res) => {
+    try {
+        const { delivery_address } = req.body;
+        const user_id = req.user.id;
+
+        const cart = await Cart.findOne({ user_id });
+        if (!cart || cart.items.length === 0) {
+            return res.status(400).json({ success: false, message: 'Cart is empty or not found' });
+        }
+
+        const orderItems = [];
+        let grand_total = 0;
+        let total_quantity = 0;
+
+        for (const cartItem of cart.items) {
+            const medicine = await Medicine.findById(cartItem.medicine_id);
+            const price = medicine ? medicine.price : cartItem.price_at_added;
+            const name = medicine ? medicine.medicine_name : 'Unknown';
+            const image = medicine ? medicine.medicine_image : '';
+            const subtotal = price * cartItem.quantity;
+
+            orderItems.push({
+                medicine_id: cartItem.medicine_id,
+                medicine_name: name,
+                medicine_image: image,
+                quantity: cartItem.quantity,
+                price,
+                subtotal
+            });
+
+            grand_total += subtotal;
+            total_quantity += cartItem.quantity;
+        }
+
+        const availableBoy = await DeliveryBoy.findOne({ status: 'available' });
+
+        const newOrder = new Order({
+            user_id,
+            delivery_boy_id: availableBoy ? availableBoy._id : null,
+            razorpay_order_id: 'COD_' + Date.now(),
+            razorpay_payment_id: 'COD_PAYMENT',
+            payment_mode: 'COD',
+            payment_status: 'pending',
+            items: orderItems,
+            total_items: orderItems.length,
+            total_quantity,
+            grand_total,
+            status: 'processing',
+            delivery_address: delivery_address || {}
+        });
+        await newOrder.save();
+
+        if (availableBoy) {
+            availableBoy.status = 'busy';
+            await availableBoy.save();
+        }
+
+        cart.items = [];
+        await cart.save();
+
+        res.status(200).json({ success: true, message: 'COD Order placed successfully!', order: newOrder });
+    } catch (error) {
+        console.error('Error placing COD order:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

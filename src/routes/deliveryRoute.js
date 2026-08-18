@@ -16,4 +16,9 @@ router.put('/update-status/:order_id', authMiddleware, (req, res, next) => {
     next();
 }, deliveryController.updateOrderStatus);
 
+router.put('/verify-otp-deliver/:order_id', authMiddleware, (req, res, next) => {
+    if (req.user.role !== 'delivery') return res.status(403).json({ success: false, message: 'Forbidden' });
+    next();
+}, deliveryController.verifyOtpAndDeliver);
+
 module.exports = router;
