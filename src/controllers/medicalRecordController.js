@@ -97,9 +97,11 @@ exports.createMedicalRecord = async (req, res) => {
             visit_date
         });
 
-        // Update appointment
-        appointment.prescription_added = true;
-        await appointment.save();
+        // Update appointment if prescription was attached
+        if (prescription && prescription.trim() !== '') {
+            appointment.prescription_added = true;
+            await appointment.save();
+        }
 
         return res.status(201).json({
             success: true,

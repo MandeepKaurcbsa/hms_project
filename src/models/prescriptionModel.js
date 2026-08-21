@@ -46,6 +46,11 @@ const prescriptionMedicineSchema = new mongoose.Schema({
         required: true
     },
 
+    quantity: {
+        type: Number,
+        default: 1
+    },
+
     instructions: {
         type: String,
         default: ""
@@ -105,10 +110,10 @@ const prescriptionSchema = new mongoose.Schema({
     },
 
     quantity: {
-    type: Number,
-    required: true,
-    min: 1
-},  
+        type: Number,
+        default: 1,
+        min: 1
+    },  
 
     status: {
         type: String,

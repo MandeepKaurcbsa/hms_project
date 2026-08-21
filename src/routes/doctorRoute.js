@@ -8,6 +8,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const adminOnly = require("../middleware/adminMiddleware");
 
 const doctorOnly = require("../middleware/doctorMiddleware");
+const upload = require("../middleware/uploadMiddleware");
 
 // Public route — no auth required
 router.get("/active", doctorController.getActiveDoctors);
@@ -25,12 +26,23 @@ router.get("/all", authMiddleware, adminOnly, doctorController.getAllDoctors);
 router.get("/:id", authMiddleware, adminOnly, doctorController.getSingleDoctor);
 
 const profileUploadMiddleware = (req, res, next) => {
-    upload.fields([
-        { name: 'profile_img', maxCount: 1 },
-        { name: 'signature', maxCount: 1 }
-    ])(req, res, () => {
+    if (req.headers['content-type'] && req.headers['content-type'].includes('application/json')) {
+        return next();
+    }
+    try {
+        upload.fields([
+            { name: 'profile_img', maxCount: 1 },
+            { name: 'signature', maxCount: 1 }
+        ])(req, res, (err) => {
+            if (err) {
+                console.error("Profile upload error:", err.message);
+            }
+            next();
+        });
+    } catch (e) {
+        console.error("Multer middleware error:", e.message);
         next();
-    });
+    }
 };
 
 //update doctor's profile

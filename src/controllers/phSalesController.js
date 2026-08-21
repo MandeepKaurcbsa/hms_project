@@ -104,7 +104,7 @@ exports.getAllSales = async (req, res) => {
     try {
 
         const sales = await PhSales.find(
-            {},
+            { pharmacist_id: req.user.id },
             "_id user_id total_items total_quantity total_price sold_at"
         )
         .sort({ sold_at: -1 });
@@ -144,9 +144,11 @@ exports.getSaleDetails = async (req, res) => {
 
         const { sale_id } = req.params;
 
-        const sale = await PhSales.findOne({
-    _id: sale_id
-});
+        const query = (req.user && req.user.role === "pharmacist")
+            ? { _id: sale_id, pharmacist_id: req.user.id }
+            : { _id: sale_id };
+
+        const sale = await PhSales.findOne(query);
         if (!sale) {
 
             return res.status(404).json({

@@ -36,8 +36,11 @@ router.put("/doctor/:id/confirmed", authMiddleware, doctorOnly, appointmentContr
 //reject appointment
 router.put("/doctor/:id/reject", authMiddleware, doctorOnly, appointmentController.rejectAppointment);
 
-//complete appointment
+//complete appointment (manual)
 router.put("/doctor/:id/complete", authMiddleware, doctorOnly, appointmentController.completeAppointment);
+
+//complete appointment when doctor joins video call (doctor attended the meet → auto-complete)
+router.post("/doctor/:id/call-complete", authMiddleware, doctorOnly, appointmentController.completeAppointmentOnCall);
 
 //-----------------------------------request by admin --------------------------------------------
 

@@ -254,7 +254,7 @@ exports.updateDoctorProfile = async (req, res) => {
         if (phone) doctor.phone = phone;
         if (profileImgUrl) doctor.profile_img = profileImgUrl;
         if (signatureUrl !== undefined) doctor.signature = signatureUrl;
-        if (consult_fee !== undefined) doctor.consult_fee = Number(consult_fee);
+        if (consult_fee !== undefined && consult_fee !== '' && !isNaN(consult_fee)) doctor.consult_fee = Number(consult_fee);
         if (consult_mode) doctor.consult_mode = consult_mode;
 
         if (available_days) {

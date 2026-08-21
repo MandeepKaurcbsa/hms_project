@@ -1111,11 +1111,37 @@ const cart = await Cart.findOne({ user_id }).session(session);
         ===========================================
         */
 
+        let assignedPharmacistId = "PHR001";
+        let assignedPharmacistName = "Pharmacist";
+        const Pharmacist = require("../models/pharmacistModel");
+
+        if (req.user && req.user.role === "pharmacist") {
+            assignedPharmacistId = req.user.id;
+            const phDoc = await Pharmacist.findById(req.user.id);
+            if (phDoc) {
+                assignedPharmacistName = `${phDoc.first_name || ''} ${phDoc.last_name || ''}`.trim() || "Pharmacist";
+            }
+        } else {
+            const activePharm = await Pharmacist.findOne({ status: "active" });
+            if (activePharm) {
+                assignedPharmacistId = activePharm._id;
+                assignedPharmacistName = `${activePharm.first_name || ''} ${activePharm.last_name || ''}`.trim() || "Pharmacist";
+            }
+        }
+
+        const User = require("../models/userModel");
+        const userObj = await User.findById(user_id);
+        const customerName = userObj ? `${userObj.first_name || ''} ${userObj.last_name || ''}`.trim() : "Customer";
+
         const sale = await PhSales.create(
 
             [{ user_id,
 
-            pharmacist_id: "PHR001",
+            user_name: customerName,
+
+            pharmacist_id: assignedPharmacistId,
+
+            pharmacist_name: assignedPharmacistName,
 
             items: saleItems,
 

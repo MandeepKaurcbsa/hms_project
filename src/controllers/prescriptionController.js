@@ -141,6 +141,13 @@ exports.createPrescription = async (req, res) => {
 
         }
 
+        let normalizedFollowUpDate = null;
+        if (follow_up_date && typeof follow_up_date === "string" && follow_up_date.trim() !== "") {
+            normalizedFollowUpDate = new Date(follow_up_date);
+        } else if (follow_up_date instanceof Date) {
+            normalizedFollowUpDate = follow_up_date;
+        }
+
         const prescription = await Prescription.create({
 
             appointment_id,
@@ -155,7 +162,7 @@ exports.createPrescription = async (req, res) => {
 
             general_instructions,
 
-            follow_up_date
+            follow_up_date: normalizedFollowUpDate
 
         });
 
@@ -205,8 +212,9 @@ exports.getMyPrescriptions = async (req, res) => {
             doctor_id
 
         })
-        .populate("patient_id", "first_name last_name age gender phone email address")
+        .populate("patient_id", "first_name last_name age gender phone email address blood_group")
         .populate("appointment_id")
+        .populate("medical_record_id")
         .sort({
 
             prescribed_date: -1
@@ -248,19 +256,59 @@ exports.getPrescriptionByAppointment = async (req, res) => {
         const { appointment_id } = req.params;
 
         const prescription = await Prescription.findOne({ appointment_id })
-            .populate("doctor_id", "first_name last_name specialization department email phone")
-            .populate("patient_id", "first_name last_name gender age blood_group");
+            .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+            .populate("patient_id", "first_name last_name gender age blood_group phone email address")
+            .populate("appointment_id")
+            .populate("medical_record_id");
 
-        if (!prescription) {
-            return res.status(404).json({
-                success: false,
-                message: "Prescription not found for this appointment."
+        if (prescription) {
+            return res.status(200).json({
+                success: true,
+                prescription
             });
         }
 
-        return res.status(200).json({
-            success: true,
-            prescription
+        // Fallback: Check if a MedicalRecord exists for this appointment
+        const medicalRecord = await MedicalRecord.findOne({ appointment_id })
+            .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+            .populate("patient_id", "first_name last_name gender age blood_group phone email address")
+            .populate("appointment_id")
+            .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
+
+        if (medicalRecord) {
+            const formattedPrescription = {
+                _id: medicalRecord._id,
+                appointment_id: medicalRecord.appointment_id,
+                medical_record_id: medicalRecord._id,
+                patient_id: medicalRecord.patient_id,
+                doctor_id: medicalRecord.doctor_id,
+                medicines: (medicalRecord.medicines_prescribed || []).map(m => ({
+                    medicine_id: m.medicine_id?._id || m.medicine_id,
+                    medicine_name: m.medicine_id?.medicine_name || 'Prescribed Medicine',
+                    strength: m.medicine_id?.strength || '',
+                    dosage: m.dosage || '',
+                    frequency: m.duration || '',
+                    duration: m.duration || '',
+                    instructions: ''
+                })),
+                general_instructions: medicalRecord.doctor_notes || medicalRecord.prescription || '',
+                follow_up_date: medicalRecord.follow_up_date,
+                prescribed_date: medicalRecord.visit_date || medicalRecord.createdAt,
+                status: 'completed',
+                diagnosis: medicalRecord.diagnosis,
+                symptoms: medicalRecord.symptoms
+            };
+
+            return res.status(200).json({
+                success: true,
+                prescription: formattedPrescription,
+                isMedicalRecordFallback: true
+            });
+        }
+
+        return res.status(404).json({
+            success: false,
+            message: "Prescription or consultation record not found for this appointment."
         });
     } catch (error) {
         return res.status(500).json({
@@ -278,7 +326,11 @@ exports.getPrescriptionDetails = async (req, res) => {
 
         const { prescription_id } = req.params;
 
-        const prescription = await Prescription.findById(prescription_id);
+        const prescription = await Prescription.findById(prescription_id)
+            .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+            .populate("patient_id", "first_name last_name gender age blood_group phone email address")
+            .populate("appointment_id")
+            .populate("medical_record_id");
 
         if (!prescription) {
 
@@ -476,9 +528,11 @@ exports.updatePrescription = async (req, res) => {
         }
 
         if (follow_up_date !== undefined) {
-
-            prescription.follow_up_date = follow_up_date;
-
+            if (follow_up_date && typeof follow_up_date === "string" && follow_up_date.trim() !== "") {
+                prescription.follow_up_date = new Date(follow_up_date);
+            } else {
+                prescription.follow_up_date = null;
+            }
         }
 
         if (status !== undefined) {
@@ -536,9 +590,10 @@ exports.getMyPatientPrescriptions = async (req, res) => {
             patient_id: { $in: patientIds }
 
         })
-        .select(
-            "_id appointment_id patient_id doctor_id status prescribed_date follow_up_date"
-        )
+        .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+        .populate("patient_id", "first_name last_name age gender phone email address blood_group")
+        .populate("appointment_id")
+        .populate("medical_record_id")
         .sort({
 
             prescribed_date: -1
@@ -581,9 +636,10 @@ exports.getAllPrescriptions = async (req, res) => {
     try {
 
         const prescriptions = await Prescription.find()
-            .select(
-                "_id appointment_id patient_id doctor_id status prescribed_date follow_up_date"
-            )
+            .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+            .populate("patient_id", "first_name last_name age gender phone email address blood_group")
+            .populate("appointment_id")
+            .populate("medical_record_id")
             .sort({
 
                 prescribed_date: -1

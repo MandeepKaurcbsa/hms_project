@@ -4,6 +4,65 @@ const Patient = require("../models/patientModel");
 const User = require("../models/userModel");
 const { sendAppointmentConfirmedEmail, sendAppointmentRejectedEmail } = require("../services/emailService");
 
+// Auto-expire appointments whose scheduled time passed without action (pending) or meeting start limit crossed (confirmed)
+const checkAndExpireAppointments = async (appointments) => {
+    if (!appointments) return;
+    const list = Array.isArray(appointments) ? appointments : [appointments];
+    const now = new Date();
+
+    for (const appt of list) {
+        if (!appt || !appt.appointment_date || !appt.appointment_time) continue;
+        if (!["pending", "confirmed"].includes(appt.status)) continue;
+
+        const apptDate = new Date(appt.appointment_date);
+        const timeStr = String(appt.appointment_time).trim();
+        let hours = 0;
+        let minutes = 0;
+
+        if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
+            const isPm = timeStr.toLowerCase().includes('pm');
+            const cleanTime = timeStr.replace(/(am|pm)/gi, '').trim();
+            const parts = cleanTime.split(':').map(Number);
+            hours = parts[0] || 0;
+            minutes = parts[1] || 0;
+            if (isPm && hours < 12) hours += 12;
+            if (!isPm && hours === 12) hours = 0;
+        } else {
+            const parts = timeStr.split(':').map(Number);
+            hours = parts[0] || 0;
+            minutes = parts[1] || 0;
+        }
+
+        const year = apptDate.getUTCFullYear();
+        const month = apptDate.getUTCMonth();
+        const date = apptDate.getUTCDate();
+        const scheduled = new Date(year, month, date, hours, minutes, 0, 0);
+
+        let shouldExpire = false;
+        let reason = "";
+
+        if (appt.status === "pending") {
+            if (now > scheduled) {
+                shouldExpire = true;
+                reason = "Expired: Scheduled appointment time passed without doctor action (confirmation/rejection)";
+            }
+        } else if (appt.status === "confirmed") {
+            const expireCutoff = new Date(scheduled.getTime() + 30 * 60 * 1000);
+            if (!appt.meet_time_start && now > expireCutoff) {
+                shouldExpire = true;
+                reason = "Expired: 30-minute meeting window limit crossed without starting consultation";
+            }
+        }
+
+        if (shouldExpire) {
+            appt.status = "expired";
+            appt.cancel_reason = reason;
+            await appt.save().catch(() => {});
+        }
+    }
+};
+
+
 //----------------------------------user side ------------------------------------------ 
 // book appointment
 exports.createAppointment = async (req, res) => {
@@ -107,6 +166,8 @@ exports.getMyAppointments = async (req, res) => {
         .populate("doctor_id", "first_name last_name specialization")
         .populate("patient_id", "first_name last_name");
 
+        await checkAndExpireAppointments(appointments);
+
         res.status(200).json({
             totalAppointments: appointments.length,
             appointments
@@ -148,6 +209,8 @@ exports.getSingleAppointment = async (req, res) => {
             });
         }
 
+        await checkAndExpireAppointments(appointment);
+
         res.status(200).json({
             appointment
         });
@@ -174,6 +237,9 @@ exports.getDoctorAppointments = async (req, res) => {
             "first_name last_name age gender phone email address blood_group"
         )
         .sort({ createdAt: -1 });
+
+        // Auto-expire appointments if time limit passed without doctor action or meeting start
+        await checkAndExpireAppointments(appointments);
 
         const userIds = [...new Set(appointments.map(a => a.user_id).filter(Boolean))];
         const users = await User.find({ _id: { $in: userIds } }).select("first_name last_name email phone");
@@ -350,7 +416,7 @@ exports.rejectAppointment = async (req, res) => {
     }
 };
 
-// doctor completes appointment
+// doctor completes appointment (manual, kept for backward compat)
 exports.completeAppointment = async (req, res) => {
     try {
 
@@ -385,6 +451,38 @@ exports.completeAppointment = async (req, res) => {
     }
 };
 
+// Doctor starts the video call → marks appointment as completed (doctor attended the meet)
+exports.completeAppointmentOnCall = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+
+        if (!appointment) {
+            return res.status(404).json({ message: "Appointment not found" });
+        }
+
+        if (appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ message: "Access denied" });
+        }
+
+        // Only mark completed if it was confirmed (not already expired/completed/cancelled)
+        if (appointment.status === "confirmed") {
+            appointment.status = "completed";
+            await appointment.save();
+        }
+
+        res.status(200).json({
+            message: "Appointment marked as completed (doctor joined the call)",
+            appointment
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error marking appointment as completed",
+            error: error.message
+        });
+    }
+};
+
 //----------------------------------admin side ------------------------------------------------
 
 // admin can view all appointments
@@ -395,6 +493,8 @@ exports.getAllAppointments = async (req, res) => {
             .populate("doctor_id", "first_name last_name specialization")
             .populate("patient_id", "first_name last_name")
             .sort({ createdAt: -1 });
+
+        await checkAndExpireAppointments(appointments);
 
         // Manually attach user (booker) data since populate fails on custom string _id
         const userIds = [...new Set(appointments.map(a => a.user_id).filter(Boolean))];
@@ -732,7 +832,6 @@ exports.getPharmacistAppointments = async (req, res) => {
         const appointments = await Appointment.find({
             $or: [
                 { user_id: req.user.id },
-                { booker_role: "pharmacist" },
                 { patient_id: { $in: patientIds } }
             ]
         })
@@ -740,26 +839,7 @@ exports.getPharmacistAppointments = async (req, res) => {
             .populate("patient_id", "first_name last_name gender age blood_group phone")
             .sort({ createdAt: -1, appointment_date: -1 });
 
-        const now = new Date();
-        for (let appt of appointments) {
-            if (!appt.appointment_date || !appt.appointment_time) continue;
-
-            const isPending = appt.status === "pending";
-            const isConfirmedUnpaid = (
-                appt.status === "confirmed" &&
-                appt.payment_status !== "paid"
-            );
-
-            if (isPending || isConfirmedUnpaid) {
-                const apptDate = new Date(appt.appointment_date);
-                const [h, m] = (appt.appointment_time || "00:00").split(":").map(Number);
-                apptDate.setHours(h || 0, m || 0, 0, 0);
-                if (apptDate <= now) {
-                    appt.status = "expired";
-                    await appt.save().catch(() => {});
-                }
-            }
-        }
+        await checkAndExpireAppointments(appointments);
 
         res.status(200).json({
             success: true,

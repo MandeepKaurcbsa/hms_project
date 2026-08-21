@@ -142,6 +142,24 @@ const appointmentSchema = new mongoose.Schema({
     },
     refund_processed_at: {
         type: Date
+    },
+
+    // ── Meeting Time Tracking ──────────────────────────────────────
+    // Timestamp when the doctor clicks "Start Meeting"
+    meet_time_start: {
+        type: Date,
+        default: null
+    },
+    // Timestamp when the doctor marks the appointment as "Completed"
+    meet_time_end: {
+        type: Date,
+        default: null
+    },
+    // Calculated meeting duration in minutes (meet_time_end - meet_time_start)
+    meet_time: {
+        type: Number,
+        default: null,
+        min: 0
     }
 }, {
     timestamps: true

@@ -48,13 +48,19 @@ router.get(
     prescriptionController.getMyPatientPrescriptions
 );
 
-// ----------------------------------admin side --------------------------------------------
-
-// Get all prescriptions
+// Get all prescriptions (Admin / Pharmacist)
 router.get(
     "/",
     authMiddleware,
-    adminOnly,
+    (req, res, next) => {
+        if (req.user && (req.user.role === "admin" || req.user.role === "pharmacist")) {
+            return next();
+        }
+        return res.status(403).json({
+            success: false,
+            message: "Access denied. Admin or Pharmacist only."
+        });
+    },
     prescriptionController.getAllPrescriptions
 );
 
