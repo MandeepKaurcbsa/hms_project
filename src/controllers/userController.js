@@ -8,18 +8,18 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 
 //register user
-exports.registerUser = async(req, res) => {
+exports.registerUser = async (req, res) => {
 
     try {
 
-        const {first_name, last_name, email, password, phone, profile_img, address, status, is_verified} = req.body;
+        const { first_name, last_name, email, password, phone, profile_img, address, status, is_verified } = req.body;
 
         //check existing user
-        const userExists = await User.findOne({email});
+        const userExists = await User.findOne({ email });
 
-        if(userExists){
+        if (userExists) {
             return res.status(400).json({
-                message : "User already Exists"
+                message: "User already Exists"
             });
         }
 
@@ -31,7 +31,7 @@ exports.registerUser = async(req, res) => {
             first_name,
             last_name,
             email,
-            password : hashPassword,
+            password: hashPassword,
             phone,
             profile_img,
             address,
@@ -40,98 +40,98 @@ exports.registerUser = async(req, res) => {
         });
 
         res.status(201).json({
-            message : "User Created Successfully",
-            _id : user._id
+            message: "User Created Successfully",
+            _id: user._id
         });
 
     } catch (error) {
 
         res.status(500).json({
-            message : "Error registering User",
-            error : error.message
+            message: "Error registering User",
+            error: error.message
         });
 
     }
 };
 
 //user login
-exports.loginUser = async(req, res) => {
+exports.loginUser = async (req, res) => {
     try {
-        const{email, password} = req.body;
+        const { email, password } = req.body;
 
-    //check if user is there or not
-    const user = await User.findOne({email});
-    if(!user){
-       return  res.status(400).json({message : "Invalid email or password"});
-    }
+        //check if user is there or not
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: "Invalid email or password" });
+        }
 
-    //compare passsword
-    const isMatch = await bcrypt.compare(password, user.password);
-    if(!isMatch){
-        return res.status(400).json({message : "Invalid email or password"});
-    }
+        //compare passsword
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Invalid email or password" });
+        }
 
-    if(user.status === "inactive"){
-    return res.status(403).json({
-        message: "Account is inactive. Please contact admin."
-    });
-}
+        if (user.status === "inactive") {
+            return res.status(403).json({
+                message: "Account is inactive. Please contact admin."
+            });
+        }
 
-    if(user.status === "blocked"){
-    return res.status(403).json({
-        message: "Account has been blocked by admin."
-    });
-}
+        if (user.status === "blocked") {
+            return res.status(403).json({
+                message: "Account has been blocked by admin."
+            });
+        }
 
-    // update last login
-user.last_login = new Date();
-await user.save();
+        // update last login
+        user.last_login = new Date();
+        await user.save();
 
-    //generates token 
-    const token = jwt.sign(
-        {
-            id : user._id,
-            role : "user"
-        },
-        process.env.JWT_SECRET,
-        {expiresIn : "1d"}
-    );
+        //generates token 
+        const token = jwt.sign(
+            {
+                id: user._id,
+                role: "user"
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
 
-    res.json({
-    success: true,
-    message : "Login Successful",
-    token,
-    user: {
-        id: user._id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        last_login: user.last_login
-    }
-});
+        res.json({
+            success: true,
+            message: "Login Successful",
+            token,
+            user: {
+                id: user._id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                last_login: user.last_login
+            }
+        });
 
     } catch (error) {
-       res.status(500).json({
-        message : "Error logging in",
-        error : error.message
-       }); 
+        res.status(500).json({
+            message: "Error logging in",
+            error: error.message
+        });
     }
 };
 
 //get user profile (single user that admin can fetch)
-exports.getSingleUser = async(req, res) => {
+exports.getSingleUser = async (req, res) => {
     try {
         const user = await User.findById(req.params.id).select("-password");
-        if(!user){
-            return res.status(400).json({message : "User Not Found"});
+        if (!user) {
+            return res.status(400).json({ message: "User Not Found" });
         }
 
         res.json(user);
 
     } catch (error) {
         res.status(500).json({
-            message : "Error fetching profile",
-            error : error.message
+            message: "Error fetching profile",
+            error: error.message
         });
     }
 };
@@ -141,20 +141,20 @@ exports.getUserProfile = async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select("-password");
 
-        if(!user){
+        if (!user) {
             return res.status(400).json({
-                message : "User not found"
+                message: "User not found"
             });
         }
 
         res.status(200).json({
-            message : "User fetched successfully",
+            message: "User fetched successfully",
             user
         })
     } catch (error) {
         res.status(500).json({
-            message : "Error fetching user",
-            error : error.message
+            message: "Error fetching user",
+            error: error.message
         });
     }
 };
@@ -165,14 +165,14 @@ exports.getAllUsers = async (req, res) => {
         const users = await User.find().select("-password");
 
         res.status(200).json({
-            message : "Users fetched successfully",
-            totalUsers : users.length,
-            users 
+            message: "Users fetched successfully",
+            totalUsers: users.length,
+            users
         })
     } catch (error) {
         res.status(500).json({
-            message : "Error fetching users",
-            error : error.message 
+            message: "Error fetching users",
+            error: error.message
         });
     }
 };
@@ -216,7 +216,7 @@ exports.updateUser = async (req, res) => {
 
         const updatedUser = await User.findByIdAndUpdate(
             //user.id tells about the user id which has logged in
-            req.user.id,  
+            req.user.id,
             {
                 first_name,
                 last_name,
@@ -224,26 +224,26 @@ exports.updateUser = async (req, res) => {
                 profile_img
             },
             {
-                new : true,
-                runValidators : true
+                new: true,
+                runValidators: true
             }
         ).select("-password");
 
-        if(!updatedUser){
+        if (!updatedUser) {
             return res.status(400).json({
-                message : "User not found"
+                message: "User not found"
             });
         }
 
         res.status(200).json({
-            message : "User updated successfully",
+            message: "User updated successfully",
             updatedUser
         });
 
     } catch (error) {
         res.status(500).json({
-            message : "Error updating user's profile",
-            error : error.message 
+            message: "Error updating user's profile",
+            error: error.message
         });
     }
 };
@@ -340,7 +340,7 @@ exports.activateUser = async (req, res) => {
 exports.sendOtp = async (req, res) => {
     try {
         const { email } = req.body;
-        
+
         if (!email) {
             return res.status(400).json({ message: "Email is required" });
         }
@@ -481,5 +481,160 @@ exports.resetPassword = async (req, res) => {
             message: "Error resetting password",
             error: error.message
         });
+    }
+};
+
+// Address CRUD controllers
+exports.getUserAddresses = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // Migrate legacy signup address if addresses list is empty and user.address is present
+        if ((!user.addresses || user.addresses.length === 0) && user.address && user.address.trim()) {
+            const parts = user.address.split(',').map(p => p.trim());
+            let street = user.address;
+            let city = 'N/A';
+            let state = 'N/A';
+            let zip_code = '000000';
+            
+            if (parts.length >= 4) {
+                zip_code = parts.pop();
+                state = parts.pop();
+                city = parts.pop();
+                street = parts.join(', ');
+            } else if (parts.length === 3) {
+                state = parts.pop();
+                city = parts.pop();
+                street = parts[0];
+            } else if (parts.length === 2) {
+                city = parts.pop();
+                street = parts[0];
+            }
+
+            user.addresses.push({
+                street,
+                city,
+                state,
+                zip_code,
+                is_default: true
+            });
+            await user.save();
+        }
+
+        res.status(200).json({ success: true, addresses: user.addresses || [] });
+    } catch (error) {
+        console.error('Error fetching addresses:', error);
+        res.status(500).json({ success: false, message: "Error fetching addresses", error: error.message });
+    }
+};
+
+exports.addUserAddress = async (req, res) => {
+    try {
+        const { street, city, state, zip_code, is_default } = req.body;
+        if (!street || !city || !state || !zip_code) {
+            return res.status(400).json({ success: false, message: "All fields are required" });
+        }
+
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const shouldBeDefault = user.addresses.length === 0 ? true : is_default;
+
+        if (shouldBeDefault) {
+            user.addresses.forEach(a => a.is_default = false);
+            user.address = `${street}, ${city}, ${state}, ${zip_code}`;
+        }
+
+        user.addresses.push({
+            street,
+            city,
+            state,
+            zip_code,
+            is_default: shouldBeDefault
+        });
+
+        await user.save();
+        res.status(201).json({ success: true, message: "Address added successfully", addresses: user.addresses });
+    } catch (error) {
+        console.error('Error adding address:', error);
+        res.status(500).json({ success: false, message: "Error adding address", error: error.message });
+    }
+};
+
+exports.updateUserAddress = async (req, res) => {
+    try {
+        const { addressId } = req.params;
+        const { street, city, state, zip_code, is_default } = req.body;
+
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const addr = user.addresses.id(addressId);
+        if (!addr) {
+            return res.status(404).json({ success: false, message: "Address not found" });
+        }
+
+        if (street !== undefined) addr.street = street;
+        if (city !== undefined) addr.city = city;
+        if (state !== undefined) addr.state = state;
+        if (zip_code !== undefined) addr.zip_code = zip_code;
+
+        if (is_default) {
+            user.addresses.forEach(a => a.is_default = false);
+            addr.is_default = true;
+            user.address = `${addr.street}, ${addr.city}, ${addr.state}, ${addr.zip_code}`;
+        } else if (addr.is_default && user.addresses.length > 1) {
+            addr.is_default = false;
+            const other = user.addresses.find(a => a._id.toString() !== addressId);
+            if (other) {
+                other.is_default = true;
+                user.address = `${other.street}, ${other.city}, ${other.state}, ${other.zip_code}`;
+            }
+        }
+
+        await user.save();
+        res.status(200).json({ success: true, message: "Address updated successfully", addresses: user.addresses });
+    } catch (error) {
+        console.error('Error updating address:', error);
+        res.status(500).json({ success: false, message: "Error updating address", error: error.message });
+    }
+};
+
+exports.deleteUserAddress = async (req, res) => {
+    try {
+        const { addressId } = req.params;
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const addr = user.addresses.id(addressId);
+        if (!addr) {
+            return res.status(404).json({ success: false, message: "Address not found" });
+        }
+
+        const wasDefault = addr.is_default;
+        user.addresses.pull(addressId);
+
+        if (wasDefault && user.addresses.length > 0) {
+            user.addresses[0].is_default = true;
+            const def = user.addresses[0];
+            user.address = `${def.street}, ${def.city}, ${def.state}, ${def.zip_code}`;
+        } else if (user.addresses.length === 0) {
+            user.address = "";
+        }
+
+        await user.save();
+        res.status(200).json({ success: true, message: "Address deleted successfully", addresses: user.addresses });
+    } catch (error) {
+        console.error('Error deleting address:', error);
+        res.status(500).json({ success: false, message: "Error deleting address", error: error.message });
     }
 };

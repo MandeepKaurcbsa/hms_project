@@ -50,7 +50,14 @@ const userSchema = new mongoose.Schema({
     },
     address: {
         type: String
-    }
+    },
+    addresses: [{
+        street: { type: String, required: true },
+        city: { type: String, required: true },
+        state: { type: String, required: true },
+        zip_code: { type: String, required: true },
+        is_default: { type: Boolean, default: false }
+    }]
 }, {
     timestamps: true
 });
