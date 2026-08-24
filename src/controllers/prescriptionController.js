@@ -18,11 +18,18 @@ exports.createPrescription = async (req, res) => {
             appointment_id,
             medical_record_id,
             patient_id,
+            patient_age,
+            patient_gender,
+            age,
+            gender,
             medicines,
             general_instructions,
             follow_up_date
 
         } = req.body;
+
+        const finalAge = patient_age !== undefined ? Number(patient_age) : (age !== undefined ? Number(age) : null);
+        const finalGender = (patient_gender || gender || "").toLowerCase();
 
         // Validate required fields
         if (
@@ -156,6 +163,10 @@ exports.createPrescription = async (req, res) => {
 
             patient_id,
 
+            patient_age: finalAge,
+
+            patient_gender: finalGender,
+
             doctor_id,
 
             medicines: prescriptionMedicines,
@@ -168,6 +179,13 @@ exports.createPrescription = async (req, res) => {
 
         // Update appointment
         appointment.prescription_added = true;
+        appointment.status = "completed";
+        if (!appointment.meet_time_end) {
+            appointment.meet_time_end = new Date();
+        }
+        if (appointment.meet_time_start && appointment.meet_time_end) {
+            appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+        }
 
         await appointment.save();
 

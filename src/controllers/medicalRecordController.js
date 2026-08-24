@@ -12,6 +12,10 @@ exports.createMedicalRecord = async (req, res) => {
         const {
             patient_id,
             appointment_id,
+            patient_age,
+            patient_gender,
+            age,
+            gender,
             diagnosis,
             symptoms,
             prescription,
@@ -21,6 +25,9 @@ exports.createMedicalRecord = async (req, res) => {
             follow_up_date,
             visit_date
         } = req.body;
+
+        const finalAge = patient_age !== undefined ? Number(patient_age) : (age !== undefined ? Number(age) : null);
+        const finalGender = (patient_gender || gender || "").toLowerCase();
 
         // Required field validation
         if (
@@ -62,6 +69,13 @@ exports.createMedicalRecord = async (req, res) => {
             });
         }
 
+        // Update Patient document gender if provided
+        if (finalGender) {
+            try {
+                await Patient.findByIdAndUpdate(patient_id, { gender: finalGender });
+            } catch (e) {}
+        }
+
         // Appointment must be completed
         if (appointment.status !== "completed") {
             return res.status(400).json({
@@ -87,6 +101,8 @@ exports.createMedicalRecord = async (req, res) => {
             patient_id,
             doctor_id,
             appointment_id,
+            patient_age: finalAge,
+            patient_gender: finalGender,
             diagnosis,
             symptoms,
             prescription,
@@ -100,6 +116,13 @@ exports.createMedicalRecord = async (req, res) => {
         // Update appointment if prescription was attached
         if (prescription && prescription.trim() !== '') {
             appointment.prescription_added = true;
+            appointment.status = "completed";
+            if (!appointment.meet_time_end) {
+                appointment.meet_time_end = new Date();
+            }
+            if (appointment.meet_time_start && appointment.meet_time_end) {
+                appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+            }
             await appointment.save();
         }
 

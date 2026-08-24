@@ -163,7 +163,7 @@ exports.getMyAppointments = async (req, res) => {
         const appointments = await Appointment.find({
             user_id: req.user.id
         })
-        .populate("doctor_id", "first_name last_name specialization")
+        .populate("doctor_id", "first_name last_name specialization visit_address consult_fee phone email profile_img")
         .populate("patient_id", "first_name last_name");
 
         await checkAndExpireAppointments(appointments);
@@ -435,6 +435,12 @@ exports.completeAppointment = async (req, res) => {
         }
 
         appointment.status = "completed";
+        if (!appointment.meet_time_end) {
+            appointment.meet_time_end = new Date();
+        }
+        if (appointment.meet_time_start && appointment.meet_time_end) {
+            appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+        }
 
         await appointment.save();
 
@@ -446,6 +452,42 @@ exports.completeAppointment = async (req, res) => {
     } catch (error) {
         res.status(500).json({
             message: "Error completing appointment",
+            error: error.message
+        });
+    }
+};
+
+// Doctor starts the meeting → stamps meet_time_start
+exports.startMeeting = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+
+        if (!appointment) {
+            return res.status(404).json({ message: "Appointment not found" });
+        }
+
+        if (appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ message: "Access denied" });
+        }
+
+        if (appointment.status !== "confirmed") {
+            return res.status(400).json({ message: "Only confirmed appointments can be started" });
+        }
+
+        // Stamp meet_time_start if not already set
+        if (!appointment.meet_time_start) {
+            appointment.meet_time_start = new Date();
+            await appointment.save();
+        }
+
+        res.status(200).json({
+            message: "Meeting started successfully. Time tracking initiated.",
+            appointment
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error starting meeting",
             error: error.message
         });
     }
@@ -464,11 +506,17 @@ exports.completeAppointmentOnCall = async (req, res) => {
             return res.status(403).json({ message: "Access denied" });
         }
 
-        // Only mark completed if it was confirmed (not already expired/completed/cancelled)
-        if (appointment.status === "confirmed") {
+        // Mark completed if confirmed or completed
+        if (["confirmed", "completed"].includes(appointment.status)) {
             appointment.status = "completed";
-            await appointment.save();
         }
+        if (!appointment.meet_time_end) {
+            appointment.meet_time_end = new Date();
+        }
+        if (appointment.meet_time_start && appointment.meet_time_end) {
+            appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+        }
+        await appointment.save();
 
         res.status(200).json({
             message: "Appointment marked as completed (doctor joined the call)",
@@ -490,7 +538,7 @@ exports.getAllAppointments = async (req, res) => {
     try {
 
         const appointments = await Appointment.find()
-            .populate("doctor_id", "first_name last_name specialization")
+            .populate("doctor_id", "first_name last_name specialization visit_address")
             .populate("patient_id", "first_name last_name")
             .sort({ createdAt: -1 });
 
@@ -835,7 +883,7 @@ exports.getPharmacistAppointments = async (req, res) => {
                 { patient_id: { $in: patientIds } }
             ]
         })
-            .populate("doctor_id", "first_name last_name specialization department consult_fee phone email profile_img")
+            .populate("doctor_id", "first_name last_name specialization department consult_fee phone email profile_img visit_address")
             .populate("patient_id", "first_name last_name gender age blood_group phone")
             .sort({ createdAt: -1, appointment_date: -1 });
 
@@ -991,7 +1039,7 @@ exports.pharmacistConfirmPayment = async (req, res) => {
         const { payment_method } = req.body;
 
         const appointment = await Appointment.findById(req.params.id)
-            .populate("doctor_id", "first_name last_name specialization");
+            .populate("doctor_id", "first_name last_name specialization visit_address");
 
         if (!appointment) {
             return res.status(404).json({ success: false, message: "Appointment not found." });

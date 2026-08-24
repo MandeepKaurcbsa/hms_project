@@ -39,6 +39,9 @@ router.put("/doctor/:id/reject", authMiddleware, doctorOnly, appointmentControll
 //complete appointment (manual)
 router.put("/doctor/:id/complete", authMiddleware, doctorOnly, appointmentController.completeAppointment);
 
+//start meeting (doctor stamps meet_time_start)
+router.put("/doctor/:id/start-meeting", authMiddleware, doctorOnly, appointmentController.startMeeting);
+
 //complete appointment when doctor joins video call (doctor attended the meet → auto-complete)
 router.post("/doctor/:id/call-complete", authMiddleware, doctorOnly, appointmentController.completeAppointmentOnCall);
 

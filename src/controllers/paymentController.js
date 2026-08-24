@@ -285,6 +285,7 @@ exports.verifyAppointmentPayment = async (req, res) => {
 
         appointment.payment_status = 'paid';
         appointment.payment_method = 'upi';
+        appointment.awaiting_pharmacist_payment = false;
         await appointment.save();
 
         // Send payment success email
@@ -312,3 +313,66 @@ exports.verifyAppointmentPayment = async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+exports.payAppointmentDirect = async (req, res) => {
+    try {
+        const { appointment_id, payment_method } = req.body;
+
+        if (!appointment_id) {
+            return res.status(400).json({ success: false, message: 'Appointment ID is required' });
+        }
+
+        const appointment = await Appointment.findById(appointment_id);
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: 'Appointment not found' });
+        }
+
+        if (appointment.user_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Unauthorized to pay for this appointment' });
+        }
+
+        if (appointment.status !== 'confirmed') {
+            return res.status(400).json({ success: false, message: `Cannot pay for appointment with status "${appointment.status}"` });
+        }
+
+        if (appointment.payment_status === 'paid') {
+            return res.status(400).json({ success: false, message: 'Appointment fee is already paid' });
+        }
+
+        const validMethods = ['cash', 'upi', 'net-banking', 'card'];
+        const method = validMethods.includes(payment_method) ? payment_method : 'cash';
+
+        appointment.payment_status = 'paid';
+        appointment.payment_method = method;
+        appointment.awaiting_pharmacist_payment = false;
+        await appointment.save();
+
+        try {
+            const user = await User.findById(appointment.user_id);
+            const doctor = await Doctor.findById(appointment.doctor_id);
+            if (user && user.email && doctor) {
+                await sendAppointmentPaymentSuccessEmail({
+                    to: user.email,
+                    userName: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Valued Patient',
+                    doctorName: `${doctor.first_name || ''} ${doctor.last_name || ''}`.trim() || 'Attending Doctor',
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    consultFee: appointment.consultation_fee,
+                    consult_mode: appointment.consult_mode
+                });
+            }
+        } catch (emailErr) {
+            console.error('Payment success email failed (non-fatal):', emailErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Payment of ₹${appointment.consultation_fee} recorded successfully (${method.toUpperCase()})`,
+            appointment
+        });
+    } catch (error) {
+        console.error('Error in direct appointment payment:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+

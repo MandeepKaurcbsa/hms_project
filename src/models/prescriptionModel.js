@@ -83,6 +83,16 @@ const prescriptionSchema = new mongoose.Schema({
         required: true
     },
 
+    patient_age: {
+        type: Number,
+        default: null
+    },
+
+    patient_gender: {
+        type: String,
+        default: ""
+    },
+
     doctor_id: {
         type: String,
         ref: "Doctor",
