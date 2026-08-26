@@ -85,7 +85,7 @@ exports.verifyPayment = async (req, res) => {
 
         // Auto-assign delivery boy
         const availableBoy = await DeliveryBoy.findOne({ status: 'available' });
-        
+
         const newOrder = new Order({
             user_id,
             delivery_boy_id: availableBoy ? availableBoy._id : null,
@@ -96,7 +96,7 @@ exports.verifyPayment = async (req, res) => {
             items: orderItems,
             total_items: orderItems.length,
             total_quantity,
-            grand_total,
+            grand_total: grand_total + 9,
             status: 'paid',
             delivery_address: delivery_address || {}
         });
@@ -164,7 +164,7 @@ exports.placeCodOrder = async (req, res) => {
             items: orderItems,
             total_items: orderItems.length,
             total_quantity,
-            grand_total,
+            grand_total: grand_total + 9,
             status: 'processing',
             delivery_address: delivery_address || {}
         });
@@ -200,12 +200,12 @@ exports.deleteOrder = async (req, res) => {
     try {
         const user_id = req.user.id;
         const order_id = req.params.id;
-        
+
         const order = await Order.findOneAndDelete({ _id: order_id, user_id });
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
-        
+
         res.status(200).json({ success: true, message: 'Order removed successfully' });
     } catch (error) {
         console.error('Error deleting order:', error);
@@ -239,12 +239,12 @@ exports.updateOrderStatus = async (req, res) => {
         }
 
         order.status = status;
-        
+
         // update tracking timestamps
         if (!order.tracking) {
             order.tracking = {};
         }
-        
+
         if (status === 'processing') order.tracking.processing_at = new Date();
         if (status === 'shipped') order.tracking.shipped_at = new Date();
         if (status === 'out_for_delivery') order.tracking.out_for_delivery_at = new Date();

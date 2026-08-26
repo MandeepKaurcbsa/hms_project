@@ -17,7 +17,11 @@ const {
     activateUser,
     sendOtp,
     verifyOtp,
-    resetPassword
+    resetPassword,
+    getUserAddresses,
+    addUserAddress,
+    updateUserAddress,
+    deleteUserAddress
 } = require("../controllers/userController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -44,20 +48,25 @@ router.get("/all", authMiddleware, adminOnly, getAllUsers);
 // get all users with their patients (admin)
 router.get("/all-with-patients", authMiddleware, adminOnly, getAllUsersWithPatients);
 
-//get single user(admin fetches this)
-router.get("/:id", authMiddleware, adminOnly, getSingleUser);
-
 //update a users profile
 router.put("/update", authMiddleware, userOnly, updateUser);
 
 //inactivates the user profile by admin(soft delete)
 router.put("/inactivate/:id", authMiddleware, adminOnly, inactivateUser);
-    
+
 //blocks user profile by admin(restricted by admin)
 router.put("/block/:id", authMiddleware, adminOnly, blockUser);
 
 //reactivates user profile by admin after inactivating/blocking
 router.put("/activate/:id", authMiddleware, adminOnly, activateUser);
 
+// Addresses endpoints
+router.get("/addresses", authMiddleware, userOnly, getUserAddresses);
+router.post("/addresses", authMiddleware, userOnly, addUserAddress);
+router.put("/addresses/:addressId", authMiddleware, userOnly, updateUserAddress);
+router.delete("/addresses/:addressId", authMiddleware, userOnly, deleteUserAddress);
+
+//get single user(admin fetches this)
+router.get("/:id", authMiddleware, adminOnly, getSingleUser);
 
 module.exports = router;
