@@ -15,6 +15,8 @@ const pharmacistOnly = require("../middleware/pharmacistMiddleware");
 
 const userOrPharmacist = require("../middleware/userOrPharmacistMiddleware");
 
+const paymentController = require("../controllers/paymentController");
+
 //----------------------------------request by user ---------------------------------------- 
 //book appointment
 router.post("/book", authMiddleware, userOnly, appointmentController.createAppointment);
@@ -41,6 +43,15 @@ router.put("/doctor/:id/complete", authMiddleware, doctorOnly, appointmentContro
 
 //start meeting (doctor stamps meet_time_start)
 router.put("/doctor/:id/start-meeting", authMiddleware, doctorOnly, appointmentController.startMeeting);
+
+//doctor marks offline patient no-show
+router.put("/doctor/:id/no-show", authMiddleware, doctorOnly, appointmentController.doctorMarkPatientNoShow);
+
+//refund appointment by doctor
+router.post("/doctor/:id/refund", authMiddleware, doctorOnly, paymentController.processDoctorRefund);
+router.put("/doctor/:id/refund", authMiddleware, doctorOnly, paymentController.processDoctorRefund);
+router.post("/refund-appointment/:id", authMiddleware, doctorOnly, paymentController.processDoctorRefund);
+router.put("/refund-appointment/:id", authMiddleware, doctorOnly, paymentController.processDoctorRefund);
 
 //complete appointment when doctor joins video call (doctor attended the meet → auto-complete)
 router.post("/doctor/:id/call-complete", authMiddleware, doctorOnly, appointmentController.completeAppointmentOnCall);

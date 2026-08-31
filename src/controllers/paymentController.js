@@ -7,7 +7,11 @@ const DeliveryBoy = require('../models/deliveryBoyModel');
 const Appointment = require('../models/appointModel');
 const User = require('../models/userModel');
 const Doctor = require('../models/doctorModel');
-const { sendAppointmentPaymentSuccessEmail } = require('../services/emailService');
+const {
+    sendAppointmentPaymentSuccessEmail,
+    sendDoctorPaymentReceivedEmail,
+    sendAppointmentRefundEmail
+} = require('../services/emailService');
 
 const razorpayInstance = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -286,25 +290,44 @@ exports.verifyAppointmentPayment = async (req, res) => {
         appointment.payment_status = 'paid';
         appointment.payment_method = 'upi';
         appointment.awaiting_pharmacist_payment = false;
+        appointment.razorpay_payment_id = razorpay_payment_id || null;
+        appointment.razorpay_order_id = razorpay_order_id || null;
         await appointment.save();
 
-        // Send payment success email
+        // Send payment success email to patient & payment notification to doctor
         try {
+            const Patient = require('../models/patientModel');
             const user = await User.findById(appointment.user_id);
             const doctor = await Doctor.findById(appointment.doctor_id);
+            const patient = await Patient.findById(appointment.patient_id);
+            const patientName = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : (user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Patient');
+
             if (user && user.email && doctor) {
                 await sendAppointmentPaymentSuccessEmail({
                     to: user.email,
-                    userName: `${user.first_name} ${user.last_name}`,
-                    doctorName: `${doctor.first_name} ${doctor.last_name}`,
+                    userName: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Valued Patient',
+                    doctorName: `${doctor.first_name || ''} ${doctor.last_name || ''}`.trim() || 'Attending Doctor',
                     appointmentDate: appointment.appointment_date,
                     appointmentTime: appointment.appointment_time,
                     consultFee: appointment.consultation_fee,
                     consult_mode: appointment.consult_mode
                 });
             }
+
+            if (doctor && doctor.email) {
+                await sendDoctorPaymentReceivedEmail({
+                    to: doctor.email,
+                    doctorName: `${doctor.first_name || ''} ${doctor.last_name || ''}`.trim() || 'Doctor',
+                    patientName,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    consultFee: appointment.consultation_fee,
+                    consult_mode: appointment.consult_mode,
+                    appointmentId: appointment._id
+                });
+            }
         } catch (emailErr) {
-            console.error('Payment success email failed (non-fatal):', emailErr.message);
+            console.error('Payment notification email failed (non-fatal):', emailErr.message);
         }
 
         res.status(200).json({ success: true, message: 'Appointment payment verified successfully', appointment });
@@ -348,8 +371,12 @@ exports.payAppointmentDirect = async (req, res) => {
         await appointment.save();
 
         try {
+            const Patient = require('../models/patientModel');
             const user = await User.findById(appointment.user_id);
             const doctor = await Doctor.findById(appointment.doctor_id);
+            const patient = await Patient.findById(appointment.patient_id);
+            const patientName = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : (user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Patient');
+
             if (user && user.email && doctor) {
                 await sendAppointmentPaymentSuccessEmail({
                     to: user.email,
@@ -361,8 +388,21 @@ exports.payAppointmentDirect = async (req, res) => {
                     consult_mode: appointment.consult_mode
                 });
             }
+
+            if (doctor && doctor.email) {
+                await sendDoctorPaymentReceivedEmail({
+                    to: doctor.email,
+                    doctorName: `${doctor.first_name || ''} ${doctor.last_name || ''}`.trim() || 'Doctor',
+                    patientName,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    consultFee: appointment.consultation_fee,
+                    consult_mode: appointment.consult_mode,
+                    appointmentId: appointment._id
+                });
+            }
         } catch (emailErr) {
-            console.error('Payment success email failed (non-fatal):', emailErr.message);
+            console.error('Payment notification email failed (non-fatal):', emailErr.message);
         }
 
         res.status(200).json({
@@ -372,6 +412,119 @@ exports.payAppointmentDirect = async (req, res) => {
         });
     } catch (error) {
         console.error('Error in direct appointment payment:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+exports.processDoctorRefund = async (req, res) => {
+    try {
+        const appointmentId = req.params.id;
+
+        const appointment = await Appointment.findById(appointmentId);
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: 'Appointment not found' });
+        }
+
+        // Verify doctor authorization
+        if (appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Unauthorized. You can only process refunds for your own appointments' });
+        }
+
+        // Verify payment status
+        if (appointment.payment_status !== 'paid') {
+            return res.status(400).json({
+                success: false,
+                message: `Refund cannot be processed because appointment payment status is "${appointment.payment_status}" (must be "paid")`
+            });
+        }
+
+        // Check refund eligibility condition:
+        // Situation 1: Doctor cancelled appointment after confirm and payment
+        // Situation 2: Appointment expired because doctor did not join/complete meeting
+        const isCancelledByDoc = appointment.status === 'cancelled' && appointment.cancelled_by === 'doctor';
+        const isExpired = appointment.status === 'expired';
+
+        if (!isCancelledByDoc && !isExpired) {
+            return res.status(400).json({
+                success: false,
+                message: 'Refund button is only enabled when the appointment was cancelled by doctor after payment or expired due to doctor non-attendance.'
+            });
+        }
+
+        if (appointment.refund_status === 'not_applicable') {
+            return res.status(400).json({
+                success: false,
+                message: 'Refund is not applicable for this appointment (Patient did not join / visit clinic).'
+            });
+        }
+
+        if (appointment.refund_status === 'refunded') {
+            return res.status(400).json({ success: false, message: 'Refund has already been processed for this appointment.' });
+        }
+
+        let razorpayRefundId = null;
+
+        // Process Razorpay API refund if razorpay_payment_id exists
+        if (appointment.razorpay_payment_id) {
+            try {
+                const refundOptions = {
+                    amount: Math.round(appointment.consultation_fee * 100),
+                    speed: 'optimum',
+                    notes: {
+                        reason: appointment.cancel_reason || (isExpired ? 'Appointment expired refund' : 'Doctor cancellation refund')
+                    }
+                };
+                const refundRes = await razorpayInstance.payments.refund(appointment.razorpay_payment_id, refundOptions);
+                if (refundRes && refundRes.id) {
+                    razorpayRefundId = refundRes.id;
+                }
+            } catch (razorpayErr) {
+                console.error('Razorpay API refund error (proceeding with DB refund status update):', razorpayErr.message);
+            }
+        }
+
+        appointment.payment_status = 'refunded';
+        appointment.refund_status = 'refunded';
+        appointment.refund_percentage = 100;
+        appointment.refund_amount = appointment.consultation_fee;
+        appointment.refund_processed_at = new Date();
+        if (razorpayRefundId) {
+            appointment.razorpay_refund_id = razorpayRefundId;
+        }
+        await appointment.save();
+
+        // Send refund email to patient / user / pharmacist
+        try {
+            const user = await User.findById(appointment.user_id);
+            const doctor = await Doctor.findById(appointment.doctor_id);
+            const userName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Valued Patient';
+            const doctorName = doctor ? `${doctor.first_name || ''} ${doctor.last_name || ''}`.trim() : 'Attending Doctor';
+            const recipientEmail = user?.email;
+
+            if (recipientEmail) {
+                await sendAppointmentRefundEmail({
+                    to: recipientEmail,
+                    userName,
+                    doctorName,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    refundAmount: appointment.consultation_fee,
+                    reason: appointment.cancel_reason || (isExpired ? 'Appointment expired without doctor consultation' : 'Appointment cancelled by doctor'),
+                    appointmentId: appointment._id
+                });
+            }
+        } catch (emailErr) {
+            console.error('Refund email notification failed (non-fatal):', emailErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `100% Refund of ₹${appointment.consultation_fee} processed successfully`,
+            appointment
+        });
+
+    } catch (error) {
+        console.error('Error processing doctor refund:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

@@ -2,7 +2,7 @@ const Appointment = require("../models/appointModel");
 const Doctor = require("../models/doctorModel");
 const Patient = require("../models/patientModel");
 const User = require("../models/userModel");
-const { sendAppointmentConfirmedEmail, sendAppointmentRejectedEmail } = require("../services/emailService");
+const { sendAppointmentConfirmedEmail, sendAppointmentRejectedEmail, sendDoctorPaymentReceivedEmail } = require("../services/emailService");
 
 // Auto-expire appointments whose scheduled time passed without action (pending) or meeting start limit crossed (confirmed)
 const checkAndExpireAppointments = async (appointments) => {
@@ -40,23 +40,55 @@ const checkAndExpireAppointments = async (appointments) => {
 
         let shouldExpire = false;
         let reason = "";
+        let isPatientNoShow = false;
+        let isDoctorNoShow = false;
 
         if (appt.status === "pending") {
             if (now > scheduled) {
                 shouldExpire = true;
                 reason = "Expired: Scheduled appointment time passed without doctor action (confirmation/rejection)";
+                isDoctorNoShow = true;
             }
         } else if (appt.status === "confirmed") {
             const expireCutoff = new Date(scheduled.getTime() + 30 * 60 * 1000);
-            if (!appt.meet_time_start && now > expireCutoff) {
+            if (now > expireCutoff) {
                 shouldExpire = true;
-                reason = "Expired: 30-minute meeting window limit crossed without starting consultation";
+                if (appt.payment_status !== "paid") {
+                    reason = "Expired: Appointment fee was not paid within 30 minutes of scheduled time";
+                    isPatientNoShow = true;
+                } else if (appt.consult_mode === "online") {
+                    if (appt.meet_time_start) {
+                        reason = "Expired: Doctor joined online meet, but patient failed to join within 30 minutes";
+                        isPatientNoShow = true;
+                    } else {
+                        reason = "Expired: Doctor did not join online meeting within 30 minutes of scheduled time";
+                        isDoctorNoShow = true;
+                    }
+                } else {
+                    reason = "Expired: Scheduled time passed without doctor marking consultation as completed or recording patient no-show (Doctor's Fault)";
+                    isDoctorNoShow = true;
+                }
             }
         }
 
         if (shouldExpire) {
             appt.status = "expired";
             appt.cancel_reason = reason;
+
+            if (isPatientNoShow) {
+                appt.refund_status = "not_applicable";
+                appt.refund_percentage = 0;
+                appt.refund_amount = 0;
+            } else if (isDoctorNoShow && appt.payment_status === "paid") {
+                appt.refund_percentage = 100;
+                appt.refund_amount = appt.consultation_fee || 0;
+                if (appt.refund_status !== "refunded") {
+                    appt.refund_status = "pending";
+                }
+            } else {
+                appt.refund_status = "not_applicable";
+            }
+
             await appt.save().catch(() => {});
         }
     }
@@ -457,7 +489,7 @@ exports.completeAppointment = async (req, res) => {
     }
 };
 
-// Doctor starts the meeting → stamps meet_time_start
+// Doctor starts the meeting → stamps meet_time_start (enabled ONLY at scheduled time up to 30 mins after scheduled time)
 exports.startMeeting = async (req, res) => {
     try {
         const appointment = await Appointment.findById(req.params.id);
@@ -472,6 +504,41 @@ exports.startMeeting = async (req, res) => {
 
         if (appointment.status !== "confirmed") {
             return res.status(400).json({ message: "Only confirmed appointments can be started" });
+        }
+
+        // Validate time window for Doctor starting the meeting: enabled at scheduled time for 30 mins
+        if (appointment.appointment_date && appointment.appointment_time) {
+            const scheduled = new Date(appointment.appointment_date);
+            const timeStr = String(appointment.appointment_time).trim();
+            let hours = 0;
+            let minutes = 0;
+            if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
+                const isPm = timeStr.toLowerCase().includes('pm');
+                const cleanTime = timeStr.replace(/(am|pm)/gi, '').trim();
+                const parts = cleanTime.split(':').map(Number);
+                hours = parts[0] || 0;
+                minutes = parts[1] || 0;
+                if (isPm && hours < 12) hours += 12;
+                if (!isPm && hours === 12) hours = 0;
+            } else {
+                const parts = timeStr.split(':').map(Number);
+                hours = parts[0] || 0;
+                minutes = parts[1] || 0;
+            }
+            scheduled.setHours(hours, minutes, 0, 0);
+            const windowEnd = new Date(scheduled.getTime() + 30 * 60 * 1000);
+            const now = new Date();
+
+            if (now < scheduled) {
+                return res.status(400).json({
+                    message: `Start Meet button can only be clicked at scheduled time (${appointment.appointment_time}).`
+                });
+            }
+            if (now > windowEnd) {
+                return res.status(400).json({
+                    message: "Meeting start window (30 mins from scheduled time) has expired."
+                });
+            }
         }
 
         // Stamp meet_time_start if not already set
@@ -493,7 +560,7 @@ exports.startMeeting = async (req, res) => {
     }
 };
 
-// Doctor starts the video call → marks appointment as completed (doctor attended the meet)
+// Doctor cuts/stops the video call → stamps meet_time_end, calculates duration, marks appointment as completed
 exports.completeAppointmentOnCall = async (req, res) => {
     try {
         const appointment = await Appointment.findById(req.params.id);
@@ -514,18 +581,21 @@ exports.completeAppointmentOnCall = async (req, res) => {
             appointment.meet_time_end = new Date();
         }
         if (appointment.meet_time_start && appointment.meet_time_end) {
-            appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+            const durationMs = new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start);
+            appointment.meet_time = Math.max(1, Math.round(durationMs / 60000));
+        } else {
+            appointment.meet_time = 1;
         }
         await appointment.save();
 
         res.status(200).json({
-            message: "Appointment marked as completed (doctor joined the call)",
+            message: "Appointment marked as completed and meeting ended by doctor.",
             appointment
         });
 
     } catch (error) {
         res.status(500).json({
-            message: "Error marking appointment as completed",
+            message: "Error marking appointment call as completed",
             error: error.message
         });
     }
@@ -622,6 +692,13 @@ exports.cancelAppointment = async (req, res) => {
         if (appointment.user_id !== req.user.id) {
             return res.status(403).json({
                 message: "Access denied"
+            });
+        }
+
+        // Post-payment cancellation is blocked for user/pharmacist
+        if (appointment.payment_status === "paid") {
+            return res.status(400).json({
+                message: "Cancellation is not allowed after payment is completed."
             });
         }
 
@@ -750,16 +827,17 @@ exports.doctorCancelAppointment = async (req, res) => {
             });
         }
 
-        const refundAmount = appointment.consultation_fee;
+        const isPaid = appointment.payment_status === "paid";
+        const refundAmount = isPaid ? appointment.consultation_fee : 0;
 
         appointment.status = "cancelled";
         appointment.cancelled_by = "doctor";
         appointment.cancel_reason = cancel_reason;
         appointment.cancelled_at = new Date();
 
-        appointment.refund_percentage = 100;
+        appointment.refund_percentage = isPaid ? 100 : 0;
         appointment.refund_amount = refundAmount;
-        appointment.refund_status = "pending";
+        appointment.refund_status = isPaid ? "pending" : "not_applicable";
 
         await appointment.save();
 
@@ -1067,6 +1145,28 @@ exports.pharmacistConfirmPayment = async (req, res) => {
 
         await appointment.save();
 
+        // Send payment notification to doctor
+        try {
+            const doctorObj = await Doctor.findById(appointment.doctor_id?._id || appointment.doctor_id);
+            const patientObj = await Patient.findById(appointment.patient_id);
+            const patientName = patientObj ? `${patientObj.first_name || ''} ${patientObj.last_name || ''}`.trim() : 'Pharmacist Patient';
+
+            if (doctorObj && doctorObj.email) {
+                await sendDoctorPaymentReceivedEmail({
+                    to: doctorObj.email,
+                    doctorName: `${doctorObj.first_name || ''} ${doctorObj.last_name || ''}`.trim() || 'Doctor',
+                    patientName,
+                    appointmentDate: appointment.appointment_date,
+                    appointmentTime: appointment.appointment_time,
+                    consultFee: appointment.consultation_fee,
+                    consult_mode: appointment.consult_mode,
+                    appointmentId: appointment._id
+                });
+            }
+        } catch (emailErr) {
+            console.error('Doctor payment email failed (non-fatal):', emailErr.message);
+        }
+
         res.status(200).json({
             success: true,
             message: `Payment of ₹${appointment.consultation_fee} done! Your appointment with Dr. ${appointment.doctor_id?.first_name} ${appointment.doctor_id?.last_name} is now fully scheduled.`,
@@ -1112,7 +1212,7 @@ exports.pharmacistCancelAppointment = async (req, res) => {
         if (appointment.payment_status === "paid") {
             return res.status(400).json({
                 success: false,
-                message: "Payment already made. Contact admin for refund."
+                message: "Cancellation is not allowed after payment is completed."
             });
         }
 
@@ -1133,6 +1233,84 @@ exports.pharmacistCancelAppointment = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error cancelling appointment.",
+            error: error.message
+        });
+    }
+};
+
+// Doctor marks offline appointment as patient no-show
+exports.doctorMarkPatientNoShow = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        if (appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+
+        if (["expired", "completed", "cancelled"].includes(appointment.status)) {
+            return res.status(400).json({ success: false, message: `Appointment is already ${appointment.status}.` });
+        }
+
+        // Validate time window: enabled only from scheduled time to scheduled time + 30 mins
+        if (appointment.appointment_date && appointment.appointment_time) {
+            const scheduled = new Date(appointment.appointment_date);
+            const timeStr = String(appointment.appointment_time).trim();
+            let hours = 0;
+            let minutes = 0;
+            if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
+                const isPm = timeStr.toLowerCase().includes('pm');
+                const cleanTime = timeStr.replace(/(am|pm)/gi, '').trim();
+                const parts = cleanTime.split(':').map(Number);
+                hours = parts[0] || 0;
+                minutes = parts[1] || 0;
+                if (isPm && hours < 12) hours += 12;
+                if (!isPm && hours === 12) hours = 0;
+            } else {
+                const parts = timeStr.split(':').map(Number);
+                hours = parts[0] || 0;
+                minutes = parts[1] || 0;
+            }
+            scheduled.setHours(hours, minutes, 0, 0);
+            const windowEnd = new Date(scheduled.getTime() + 30 * 60 * 1000);
+            const now = new Date();
+
+            if (now < scheduled) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Patient 'Did Not Visit Clinic' action is only allowed starting at scheduled time (${appointment.appointment_time}).`
+                });
+            }
+            if (now > windowEnd) {
+                return res.status(400).json({
+                    success: false,
+                    message: "The 30-minute window for marking patient no-show has expired."
+                });
+            }
+        }
+
+        appointment.status = "expired";
+        appointment.cancel_reason = "Patient did not visit the Clinic";
+        appointment.refund_status = "not_applicable";
+        appointment.refund_percentage = 0;
+        appointment.refund_amount = 0;
+        appointment.prescription_added = false;
+
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Appointment marked as Expired (Patient did not visit the Clinic). No refund issued.",
+            appointment
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error marking patient no-show.",
             error: error.message
         });
     }

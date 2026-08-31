@@ -212,10 +212,97 @@ async function sendDeliveryOtpEmail({ to, userName, orderId, otp, estimatedMinut
     });
 }
 
+/**
+ * Sends an email notification to the doctor when patient/pharmacist completes fee payment.
+ */
+async function sendDoctorPaymentReceivedEmail({ to, doctorName, patientName, appointmentDate, appointmentTime, consultFee, consult_mode, appointmentId }) {
+    const formattedDate = new Date(appointmentDate).toLocaleDateString('en-IN', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    const body = `
+<h2 style="margin-top:0;font-size:20px;color:#0f172a;">Payment Received for Appointment 💳</h2>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">Hello Dr. <strong>${doctorName}</strong>,</p>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">
+  The consultation fee payment for your upcoming appointment has been successfully completed.
+</p>
+
+<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:20px 24px;margin:24px 0;">
+  <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:1px;">Appointment & Payment Details</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+    <tr><td style="padding:6px 0;color:#6b7280;">Appointment ID</td><td style="padding:6px 0;font-weight:600;">#${appointmentId}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Patient</td><td style="padding:6px 0;font-weight:600;">${patientName}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Date</td><td style="padding:6px 0;font-weight:600;">${formattedDate}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Time</td><td style="padding:6px 0;font-weight:600;">${appointmentTime}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Consultation Mode</td><td style="padding:6px 0;font-weight:600;text-transform:capitalize;">${consult_mode || 'offline'}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Fee Received</td><td style="padding:6px 0;font-weight:700;color:#16a34a;font-size:16px;">₹${consultFee}</td></tr>
+  </table>
+</div>
+
+<p style="font-size:14px;color:#6b7280;line-height:1.6;">
+  Please check your doctor dashboard for consultation schedule details.
+</p>
+<p style="font-size:14px;color:#6b7280;margin-top:0;">
+  Best regards, — <strong style="color:${BRAND_COLOR};">${BRAND_NAME} Team</strong>
+</p>`;
+
+    await transporter.sendMail({
+        from: `${BRAND_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to,
+        subject: `💳 Payment Received — Appointment #${appointmentId} | ${BRAND_NAME}`,
+        html: baseLayout(body)
+    });
+}
+
+/**
+ * Sends an email notification to the patient/pharmacist when a 100% refund is processed by doctor.
+ */
+async function sendAppointmentRefundEmail({ to, userName, doctorName, appointmentDate, appointmentTime, refundAmount, reason, appointmentId }) {
+    const formattedDate = new Date(appointmentDate).toLocaleDateString('en-IN', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    const body = `
+<h2 style="margin-top:0;font-size:20px;color:#0d9488;">Refund Processed Successfully! 💰</h2>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">Hello <strong>${userName}</strong>,</p>
+<p style="font-size:15px;color:#4a5568;line-height:1.7;">
+  A <strong>100% refund</strong> of <strong style="color:#0d9488;">₹${refundAmount}</strong> has been processed for your appointment with Dr. <strong>${doctorName}</strong>.
+</p>
+
+<div style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:10px;padding:20px 24px;margin:24px 0;">
+  <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#0d9488;text-transform:uppercase;letter-spacing:1px;">Refund Receipt Details</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+    <tr><td style="padding:6px 0;color:#6b7280;">Appointment ID</td><td style="padding:6px 0;font-weight:600;">#${appointmentId}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Doctor</td><td style="padding:6px 0;font-weight:600;">Dr. ${doctorName}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Scheduled Date</td><td style="padding:6px 0;font-weight:600;">${formattedDate}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Scheduled Time</td><td style="padding:6px 0;font-weight:600;">${appointmentTime}</td></tr>
+    <tr><td style="padding:6px 0;color:#6b7280;">Refund Amount</td><td style="padding:6px 0;font-weight:700;color:#0d9488;font-size:16px;">₹${refundAmount} (100%)</td></tr>
+    ${reason ? `<tr><td style="padding:6px 0;color:#6b7280;">Refund Reason</td><td style="padding:6px 0;font-weight:600;color:#4b5563;">${reason}</td></tr>` : ''}
+    <tr><td style="padding:6px 0;color:#6b7280;">Refund Status</td><td style="padding:6px 0;"><span style="background:#ccfbf1;color:#0f766e;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;">REFUND DONE</span></td></tr>
+  </table>
+</div>
+
+<p style="font-size:14px;color:#6b7280;line-height:1.6;">
+  The amount will reflect back in your original payment method / bank account. You can check your dashboard for full status updates.
+</p>
+<p style="font-size:14px;color:#6b7280;margin-top:0;">
+  Best regards, — <strong style="color:${BRAND_COLOR};">${BRAND_NAME} Team</strong>
+</p>`;
+
+    await transporter.sendMail({
+        from: `${BRAND_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to,
+        subject: `💰 100% Refund Processed — Appointment #${appointmentId} | ${BRAND_NAME}`,
+        html: baseLayout(body)
+    });
+}
+
 module.exports = {
     sendAppointmentConfirmedEmail,
     sendAppointmentPaymentSuccessEmail,
     sendAppointmentRejectedEmail,
-    sendDeliveryOtpEmail
+    sendDeliveryOtpEmail,
+    sendDoctorPaymentReceivedEmail,
+    sendAppointmentRefundEmail
 };
 

@@ -143,6 +143,18 @@ const appointmentSchema = new mongoose.Schema({
     refund_processed_at: {
         type: Date
     },
+    razorpay_payment_id: {
+        type: String,
+        default: null
+    },
+    razorpay_order_id: {
+        type: String,
+        default: null
+    },
+    razorpay_refund_id: {
+        type: String,
+        default: null
+    },
 
     // ── Meeting Time Tracking ──────────────────────────────────────
     // Timestamp when the doctor clicks "Start Meeting"

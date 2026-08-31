@@ -57,6 +57,14 @@ io.on("connection", (socket) => {
     io.to(to).emit("ice-candidate", { from: socket.id, candidate });
   });
 
+  // Relay end call notification
+  socket.on("end-call", ({ roomId, isDoctor }) => {
+    const targetRoom = roomId || socket.roomId;
+    if (targetRoom) {
+      socket.to(targetRoom).emit("call-ended", { isDoctor: Boolean(isDoctor) });
+    }
+  });
+
   // Handle disconnect
   socket.on("disconnect", () => {
     console.log(`[Socket] Disconnected: ${socket.id}`);
