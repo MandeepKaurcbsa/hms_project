@@ -584,7 +584,6 @@ exports.updateMedicineRequest = async (req, res) => {
                 if (expiry_date !== undefined) medicineObj.expiry_date = expiry_date;
                 await medicineObj.save();
             }
-        }
 
         return res.status(200).json({
             success: true,
