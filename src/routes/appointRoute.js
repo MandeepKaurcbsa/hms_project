@@ -91,6 +91,19 @@ router.put("/admin/:id/cancel", authMiddleware, adminOnly, appointmentController
 //fetch booked slots for a specific doctor on a specific date (public API for booking modal)
 router.get("/slots/:doctorId/:date", appointmentController.getBookedSlots);
 
+//-------------------------- follow-up routes ---------------------------------
+// doctor sets follow-up date
+router.put("/doctor/:id/set-followup", authMiddleware, doctorOnly, appointmentController.setFollowUpDate);
+
+// doctor responds to follow-up request (accept / reject)
+router.put("/doctor/:id/respond-followup", authMiddleware, doctorOnly, appointmentController.respondFollowUp);
+
+// doctor cancels accepted follow-up meeting with cancellation form reason
+router.put("/doctor/:id/cancel-followup", authMiddleware, doctorOnly, appointmentController.cancelFollowUp);
+
+// patient or pharmacist requests follow-up
+router.put("/:id/request-followup", authMiddleware, userOrPharmacist, appointmentController.requestFollowUp);
+
 //--------------------------------by user or pharmacist (wildcard — must be LAST) ----------
 
 //fetch a single appointment booked by user OR pharmacist

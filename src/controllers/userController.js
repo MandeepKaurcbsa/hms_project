@@ -183,13 +183,20 @@ exports.getAllUsersWithPatients = async (req, res) => {
         const Patient = require("../models/patientModel");
 
         const users = await User.find().select("-password").lean();
+        const userIds = users.map(u => u._id.toString());
+        const allPatients = await Patient.find({ user_id: { $in: userIds } }).lean();
 
-        const usersWithPatients = await Promise.all(
-            users.map(async (user) => {
-                const patients = await Patient.find({ user_id: user._id.toString() }).lean();
-                return { ...user, patients };
-            })
-        );
+        const patientMap = {};
+        allPatients.forEach(p => {
+            const uid = p.user_id ? p.user_id.toString() : '';
+            if (!patientMap[uid]) patientMap[uid] = [];
+            patientMap[uid].push(p);
+        });
+
+        const usersWithPatients = users.map(user => ({
+            ...user,
+            patients: patientMap[user._id.toString()] || []
+        }));
 
         res.status(200).json({
             message: "Users with patients fetched successfully",

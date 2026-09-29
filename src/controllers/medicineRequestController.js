@@ -50,21 +50,10 @@ exports.createMedicineRequest = async (req, res) => {
             });
         }
 
-        // Check if medicine already exists in Medicine collection
-        const existingMedicine = await Medicine.findOne({
-            medicine_name: medicine_name.trim()
-        });
-
-        if (existingMedicine) {
-            return res.status(409).json({
-                success: false,
-                message: "Medicine already exists in the system."
-            });
-        }
-
         // Check if pharmacist already submitted the same pending request
         const existingRequest = await MedicineRequest.findOne({
             medicine_name: medicine_name.trim(),
+            strength: strength.trim(),
             requested_by,
             status: "Pending"
         });
@@ -72,8 +61,23 @@ exports.createMedicineRequest = async (req, res) => {
         if (existingRequest) {
             return res.status(409).json({
                 success: false,
-                message: "You have already submitted this medicine for approval."
+                message: "You have already submitted a pending stock request for this medicine."
             });
+        }
+
+        // Upload base64 image to Cloudinary if provided
+        let imageUrl = medicine_image || '';
+        if (imageUrl && imageUrl.startsWith('data:image')) {
+            try {
+                const cloudinary = require("../config/cloudinary");
+                const result = await cloudinary.uploader.upload(imageUrl, {
+                    folder: 'medipulse/medicine_requests'
+                });
+                imageUrl = result.secure_url;
+            } catch (e) {
+                console.error("Cloudinary upload error in createMedicineRequest:", e.message);
+                imageUrl = '/img/medicine_bottle.png';
+            }
         }
 
         // Create request
@@ -87,7 +91,7 @@ exports.createMedicineRequest = async (req, res) => {
             price,
             stock_available,
             description,
-            medicine_image,
+            medicine_image: imageUrl,
             requires_prescription,
             mfg_date,
             expiry_date,
@@ -201,17 +205,25 @@ exports.getPendingMedicineRequests = async (req, res) => {
         .lean()
         .sort({ createdAt: -1 });
 
-        for (let reqObj of pendingRequests) {
-            if (!reqObj.requested_by || typeof reqObj.requested_by === 'string') {
-                const phId = reqObj.requested_by;
-                if (phId) {
-                    const phDoc = await Pharmacist.findById(phId).select("first_name last_name pharmacy_name email phone");
-                    if (phDoc) {
-                        reqObj.requested_by = phDoc;
+        const phIds = [...new Set(pendingRequests.map(r => r.requested_by).filter(id => id && typeof id === 'string'))];
+        if (phIds.length > 0) {
+            const pharmacists = await Pharmacist.find({ _id: { $in: phIds } }).select("first_name last_name pharmacy_name email phone").lean();
+            const phMap = {};
+            pharmacists.forEach(p => { phMap[p._id] = p; });
+            pendingRequests.forEach(reqObj => {
+                if (!reqObj.requested_by || typeof reqObj.requested_by === 'string') {
+                    if (phMap[reqObj.requested_by]) {
+                        reqObj.requested_by = phMap[reqObj.requested_by];
                     }
                 }
-            }
+            });
         }
+
+        pendingRequests.forEach(r => {
+            if (r.medicine_image && r.medicine_image.length > 500 && !r.medicine_image.startsWith('http')) {
+                r.medicine_image = '/img/medicine_bottle.png';
+            }
+        });
 
         return res.status(200).json({
             success: true,
@@ -377,17 +389,25 @@ exports.getAllMedicineRequests = async (req, res) => {
             .lean()
             .sort({ createdAt: -1 });
 
-        for (let reqObj of medicineRequests) {
-            if (!reqObj.requested_by || typeof reqObj.requested_by === 'string') {
-                const phId = reqObj.requested_by;
-                if (phId) {
-                    const phDoc = await Pharmacist.findById(phId).select("first_name last_name pharmacy_name email phone");
-                    if (phDoc) {
-                        reqObj.requested_by = phDoc;
+        const phIds = [...new Set(medicineRequests.map(r => r.requested_by).filter(id => id && typeof id === 'string'))];
+        if (phIds.length > 0) {
+            const pharmacists = await Pharmacist.find({ _id: { $in: phIds } }).select("first_name last_name pharmacy_name email phone").lean();
+            const phMap = {};
+            pharmacists.forEach(p => { phMap[p._id] = p; });
+            medicineRequests.forEach(reqObj => {
+                if (!reqObj.requested_by || typeof reqObj.requested_by === 'string') {
+                    if (phMap[reqObj.requested_by]) {
+                        reqObj.requested_by = phMap[reqObj.requested_by];
                     }
                 }
-            }
+            });
         }
+
+        medicineRequests.forEach(r => {
+            if (r.medicine_image && r.medicine_image.length > 500 && !r.medicine_image.startsWith('http')) {
+                r.medicine_image = '/img/medicine_bottle.png';
+            }
+        });
 
         return res.status(200).json({
             success: true,
@@ -450,6 +470,124 @@ exports.cancelMedicineRequest = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to cancel medicine request.",
+            error: error.message
+        });
+    }
+};
+
+exports.updateMedicineRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            medicine_name,
+            generic_name,
+            category,
+            manufacturer,
+            strength,
+            unit,
+            price,
+            stock_available,
+            description,
+            medicine_image,
+            requires_prescription,
+            mfg_date,
+            expiry_date,
+            status
+        } = req.body;
+
+        const medicineRequest = await MedicineRequest.findById(id);
+
+        if (!medicineRequest) {
+            return res.status(404).json({
+                success: false,
+                message: "Medicine request not found."
+            });
+        }
+
+        // Permission check: Pharmacist can update their own pending requests, Admin can update any
+        if (req.user.role === "pharmacist") {
+            if (medicineRequest.requested_by !== req.user.id) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied. You can only update your own stock requests."
+                });
+            }
+            if (medicineRequest.status !== "Pending") {
+                return res.status(400).json({
+                    success: false,
+                    message: `Cannot update request with status "${medicineRequest.status}". Only pending requests can be updated.`
+                });
+            }
+        } else if (req.user.role !== "admin") {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied."
+            });
+        }
+
+        // Validate dates if updated
+        const checkMfg = mfg_date || medicineRequest.mfg_date;
+        const checkExp = expiry_date || medicineRequest.expiry_date;
+        if (checkMfg && checkExp && new Date(checkExp) <= new Date(checkMfg)) {
+            return res.status(400).json({
+                success: false,
+                message: "Expiry date must be later than manufacturing date."
+            });
+        }
+
+        if (medicine_name !== undefined) medicineRequest.medicine_name = medicine_name.trim();
+        if (generic_name !== undefined) medicineRequest.generic_name = generic_name ? generic_name.trim() : "";
+        if (category !== undefined) medicineRequest.category = category;
+        if (manufacturer !== undefined) medicineRequest.manufacturer = manufacturer.trim();
+        if (strength !== undefined) medicineRequest.strength = strength.trim();
+        if (unit !== undefined) medicineRequest.unit = unit;
+        if (price !== undefined) medicineRequest.price = Number(price);
+        if (stock_available !== undefined) medicineRequest.stock_available = Number(stock_available);
+        if (description !== undefined) medicineRequest.description = description;
+        if (medicine_image !== undefined) medicineRequest.medicine_image = medicine_image;
+        if (requires_prescription !== undefined) medicineRequest.requires_prescription = Boolean(requires_prescription);
+        if (mfg_date !== undefined) medicineRequest.mfg_date = mfg_date;
+        if (expiry_date !== undefined) medicineRequest.expiry_date = expiry_date;
+
+        if (req.user.role === "admin" && status !== undefined) {
+            medicineRequest.status = status;
+        }
+
+        await medicineRequest.save();
+
+        // If the request is already Approved, sync updates to the Medicine inventory item as well
+        if (medicineRequest.status === "Approved") {
+            const medicineObj = await Medicine.findOne({
+                medicine_name: medicineRequest.medicine_name,
+                strength: medicineRequest.strength
+            });
+            if (medicineObj) {
+                if (medicine_name !== undefined) medicineObj.medicine_name = medicine_name.trim();
+                if (generic_name !== undefined) medicineObj.generic_name = generic_name ? generic_name.trim() : "";
+                if (category !== undefined) medicineObj.category = category;
+                if (manufacturer !== undefined) medicineObj.manufacturer = manufacturer.trim();
+                if (strength !== undefined) medicineObj.strength = strength.trim();
+                if (unit !== undefined) medicineObj.unit = unit;
+                if (price !== undefined) medicineObj.price = Number(price);
+                if (stock_available !== undefined) medicineObj.stock_available = Number(stock_available);
+                if (description !== undefined) medicineObj.description = description;
+                if (medicine_image !== undefined) medicineObj.medicine_image = medicine_image;
+                if (requires_prescription !== undefined) medicineObj.requires_prescription = Boolean(requires_prescription);
+                if (mfg_date !== undefined) medicineObj.mfg_date = mfg_date;
+                if (expiry_date !== undefined) medicineObj.expiry_date = expiry_date;
+                await medicineObj.save();
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Medicine request updated successfully.",
+            data: medicineRequest
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update medicine request.",
             error: error.message
         });
     }

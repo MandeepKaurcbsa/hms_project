@@ -76,6 +76,20 @@ exports.createMedicalRecord = async (req, res) => {
             } catch (e) {}
         }
 
+        if (finalAge && Number(finalAge) > 0) {
+            try {
+                const pat = await Patient.findById(patient_id);
+                if (pat) {
+                    const currentAge = pat.dob ? Math.floor((new Date() - new Date(pat.dob)) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+                    if (!pat.dob || currentAge !== Number(finalAge)) {
+                        const approxBirthYear = new Date().getFullYear() - Number(finalAge);
+                        const updatedDob = new Date(`${approxBirthYear}-01-01`);
+                        await Patient.findByIdAndUpdate(patient_id, { dob: updatedDob });
+                    }
+                }
+            } catch (e) {}
+        }
+
         // Appointment must be completed
         if (appointment.status !== "completed") {
             return res.status(400).json({
@@ -153,7 +167,7 @@ exports.getMyMedicalRecords = async (req, res) => {
         if (patient_id) filter.patient_id = patient_id;
 
         const medicalRecords = await MedicalRecord.find(filter)
-        .populate("patient_id", "first_name last_name gender")
+        .populate("patient_id", "first_name last_name gender dob")
         .populate("appointment_id", "appointment_date appointment_time")
         .populate("medicines_prescribed.medicine_id", "medicine_name strength category")
         .sort({ createdAt: -1 });
@@ -183,7 +197,7 @@ exports.getSingleMedicalRecord = async (req, res) => {
 
         // Find medical record
         const medicalRecord = await MedicalRecord.findById(id)
-            .populate("patient_id", "first_name last_name gender date_of_birth")
+            .populate("patient_id", "first_name last_name gender dob")
             .populate("appointment_id")
             .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
 
@@ -430,7 +444,7 @@ exports.getAllMedicalRecords = async (req, res) => {
     try {
 
         const medicalRecords = await MedicalRecord.find()
-            .populate("patient_id", "first_name last_name gender")
+            .populate("patient_id", "first_name last_name gender dob")
             .populate("doctor_id", "first_name last_name specialization")
             .populate("appointment_id", "appointment_date appointment_time consult_mode")
             .populate("medicines_prescribed.medicine_id", "medicine_name strength category")

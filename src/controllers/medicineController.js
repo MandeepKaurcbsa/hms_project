@@ -29,6 +29,16 @@ exports.createMedicine = async (req, res) => {
                 folder: 'medipulse/medicines'
             });
             medicine_image_url = result.secure_url;
+        } else if (medicine_image_url && medicine_image_url.startsWith('data:image')) {
+            try {
+                const result = await cloudinary.uploader.upload(medicine_image_url, {
+                    folder: 'medipulse/medicines'
+                });
+                medicine_image_url = result.secure_url;
+            } catch (e) {
+                console.error("Cloudinary upload error in createMedicine:", e.message);
+                medicine_image_url = '/img/medicine_bottle.png';
+            }
         }
 
         // Required field validation
@@ -113,7 +123,14 @@ exports.getAllMedicines = async (req, res) => {
             status: "active"
         })
         .select("-__v")
+        .lean()
         .sort({ medicine_name: 1 });
+
+        medicines.forEach(m => {
+            if (m.medicine_image && m.medicine_image.length > 500 && !m.medicine_image.startsWith('http')) {
+                m.medicine_image = '/img/medicine_bottle.png';
+            }
+        });
 
         return res.status(200).json({
             success: true,
@@ -353,7 +370,21 @@ exports.updateMedicine = async (req, res) => {
         if (unit) medicine.unit = unit;
         if (price !== undefined) medicine.price = price;
         if (description !== undefined) medicine.description = description;
-        if (medicine_image !== undefined) medicine.medicine_image = medicine_image;
+        if (medicine_image !== undefined) {
+            if (medicine_image && medicine_image.startsWith('data:image')) {
+                try {
+                    const result = await cloudinary.uploader.upload(medicine_image, {
+                        folder: 'medipulse/medicines'
+                    });
+                    medicine.medicine_image = result.secure_url;
+                } catch (e) {
+                    console.error("Cloudinary upload error in updateMedicine:", e.message);
+                    medicine.medicine_image = '/img/medicine_bottle.png';
+                }
+            } else {
+                medicine.medicine_image = medicine_image;
+            }
+        }
         if (requires_prescription !== undefined) medicine.requires_prescription = requires_prescription;
         if (mfg_date) medicine.mfg_date = mfg_date;
         if (expiry_date) medicine.expiry_date = expiry_date;

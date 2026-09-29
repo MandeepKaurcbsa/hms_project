@@ -61,7 +61,7 @@ io.on("connection", (socket) => {
   socket.on("end-call", ({ roomId, isDoctor }) => {
     const targetRoom = roomId || socket.roomId;
     if (targetRoom) {
-      socket.to(targetRoom).emit("call-ended", { isDoctor: Boolean(isDoctor) });
+      io.in(targetRoom).emit("call-ended", { isDoctor: Boolean(isDoctor) });
     }
   });
 

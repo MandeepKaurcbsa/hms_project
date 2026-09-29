@@ -40,7 +40,7 @@ const medicineRequestSchema = new mongoose.Schema({
     unit: {
         type: String,
         required: true,
-        enum: ["Strip", "Bottle", "Box", "Tube", "Piece", "Packet"]
+        enum: ["Strip", "Bottle", "Ampoule", "Vial", "Tin", "Box", "Tube", "Piece", "Packet"]
     },
 
     price: {

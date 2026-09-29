@@ -41,7 +41,7 @@ const medicineSchema = new mongoose.Schema({
     unit: {
         type: String,
         required: true,
-        enum: ["Strip", "Bottle", "Box", "Tube", "Piece", "Packet"]
+        enum: ["Strip", "Bottle", "Ampoule", "Vial", "Tin", "Box", "Tube", "Piece", "Packet"]
     },
 
     price: {
@@ -92,6 +92,9 @@ const medicineSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
+
+medicineSchema.index({ status: 1, medicine_name: 1 });
+medicineSchema.index({ category: 1 });
 
 // GENERATE CUSTOM ID USING YOUR UTILITY
 medicineSchema.pre("save", async function () {

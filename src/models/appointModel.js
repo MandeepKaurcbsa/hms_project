@@ -172,6 +172,52 @@ const appointmentSchema = new mongoose.Schema({
         type: Number,
         default: null,
         min: 0
+    },
+
+    // ── Follow-up Appointment Details ──────────────────────────────────────
+    follow_up_date: {
+        type: Date,
+        default: null
+    },
+    follow_up_time: {
+        type: String,
+        default: null
+    },
+    follow_up_reason: {
+        type: String,
+        default: null
+    },
+    follow_up_status: {
+        type: String,
+        enum: ["none", "requested", "accepted", "rejected", "cancelled"],
+        default: "none",
+        required: true
+    },
+    follow_up_requested_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_requested_by: {
+        type: String,
+        enum: ["user", "pharmacist", "doctor", null],
+        default: null
+    },
+    follow_up_responded_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_cancel_reason: {
+        type: String,
+        default: null
+    },
+    follow_up_cancelled_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_cancelled_by: {
+        type: String,
+        enum: ["doctor", null],
+        default: null
     }
 }, {
     timestamps: true

@@ -911,32 +911,52 @@ exports.adminCancelAppointment = async (req, res) => {
 };
 
 //fetch booked slots for a specific doctor on a specific date
+//fetch booked slots for a specific doctor on a specific date (combines primary bookings and accepted follow-ups)
 exports.getBookedSlots = async (req, res) => {
     try {
         const { doctorId, date } = req.params;
+        const targetDate = req.query.date || date;
         
-        const startOfDay = new Date(date);
+        const startOfDay = new Date(targetDate);
         startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(date);
+        const endOfDay = new Date(targetDate);
         endOfDay.setUTCHours(23, 59, 59, 999);
 
-        const bookedAppointments = await Appointment.find({
+        // 1. Regular appointments
+        const bookedPrimary = await Appointment.find({
             doctor_id: doctorId,
             $or: [
-                { appointment_date: date },
+                { appointment_date: targetDate },
                 { appointment_date: { $gte: startOfDay, $lte: endOfDay } }
             ],
             status: { $in: ["pending", "confirmed"] }
         }).select('appointment_time');
 
-        const bookedTimes = bookedAppointments.map(a => a.appointment_time);
+        // 2. Accepted follow-ups
+        const bookedFollowUps = await Appointment.find({
+            doctor_id: doctorId,
+            $or: [
+                { follow_up_date: targetDate },
+                { follow_up_date: { $gte: startOfDay, $lte: endOfDay } }
+            ],
+            follow_up_status: "accepted"
+        }).select('follow_up_time appointment_time');
+
+        const times1 = bookedPrimary.map(a => a.appointment_time).filter(Boolean);
+        const times2 = bookedFollowUps.map(a => a.follow_up_time || a.appointment_time).filter(Boolean);
+
+        const bookedTimes = [...new Set([...times1, ...times2])];
 
         res.status(200).json({
-            bookedTimes
+            success: true,
+            bookedTimes,
+            booked_slots: bookedTimes,
+            slots: bookedTimes
         });
 
     } catch (error) {
         res.status(500).json({
+            success: false,
             message: "Error fetching booked slots",
             error: error.message
         });
@@ -1315,3 +1335,226 @@ exports.doctorMarkPatientNoShow = async (req, res) => {
         });
     }
 };
+
+// ── Follow-Up Appointment Controllers ──────────────────────────────────────
+
+// Doctor sets / updates follow up date
+exports.setFollowUpDate = async (req, res) => {
+    try {
+        const { follow_up_date } = req.body;
+        const appointment = await Appointment.findById(req.params.id);
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        if (appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+
+        if (!follow_up_date) {
+            appointment.follow_up_date = null;
+            appointment.follow_up_status = "none";
+        } else {
+            const dateObj = new Date(follow_up_date);
+            if (isNaN(dateObj.getTime())) {
+                return res.status(400).json({ success: false, message: "Invalid follow-up date." });
+            }
+            appointment.follow_up_date = dateObj;
+            if (appointment.follow_up_status === "none" || appointment.follow_up_status === "rejected") {
+                appointment.follow_up_status = "none";
+            }
+        }
+
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Follow-up date updated successfully.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error setting follow-up date.",
+            error: error.message
+        });
+    }
+};
+
+// Patient or Pharmacist sends follow-up request
+exports.requestFollowUp = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        // Check ownership (user or pharmacist)
+        const isOwner = String(appointment.user_id) === String(req.user.id);
+        if (!isOwner) {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+
+        const { follow_up_date, follow_up_time, follow_up_reason } = req.body;
+
+        let targetDate = follow_up_date ? new Date(follow_up_date) : appointment.follow_up_date;
+
+        if (!targetDate || isNaN(new Date(targetDate).getTime())) {
+            return res.status(400).json({
+                success: false,
+                message: "Please select a valid follow-up date."
+            });
+        }
+
+        // Ensure target date is not in the past
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        if (new Date(targetDate) < todayStart) {
+            return res.status(400).json({
+                success: false,
+                message: "Follow-up date cannot be in the past. Please select today or a future date."
+            });
+        }
+
+        if (appointment.follow_up_status === "requested") {
+            return res.status(400).json({
+                success: false,
+                message: "Follow-up request is already pending doctor approval."
+            });
+        }
+
+        const requesterRole = appointment.booker_role === "pharmacist" ? "pharmacist" : "user";
+
+        appointment.follow_up_date = targetDate;
+        if (follow_up_time) appointment.follow_up_time = follow_up_time;
+        if (follow_up_reason) appointment.follow_up_reason = follow_up_reason;
+        appointment.follow_up_status = "requested";
+        appointment.follow_up_requested_at = new Date();
+        appointment.follow_up_requested_by = requesterRole;
+
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Free follow-up request sent to doctor successfully.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error submitting follow-up request.",
+            error: error.message
+        });
+    }
+};
+
+// Doctor accepts or rejects follow-up request
+exports.respondFollowUp = async (req, res) => {
+    try {
+        const { action } = req.body; // 'accept' or 'reject'
+        const appointment = await Appointment.findById(req.params.id);
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        if (appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+
+        if (appointment.follow_up_status !== "requested") {
+            return res.status(400).json({
+                success: false,
+                message: "No pending follow-up request to respond to for this appointment."
+            });
+        }
+
+        // Strict date check for doctor accept/reject within given follow-up date
+        if (appointment.follow_up_date) {
+            const followUpEndDate = new Date(appointment.follow_up_date);
+            followUpEndDate.setHours(23, 59, 59, 999);
+            const now = new Date();
+            if (now > followUpEndDate) {
+                return res.status(400).json({
+                    success: false,
+                    message: "The follow-up date has passed. Doctors can only respond to follow-up requests within the given follow-up date."
+                });
+            }
+        }
+
+        if (action === "accept") {
+            appointment.follow_up_status = "accepted";
+        } else if (action === "reject") {
+            appointment.follow_up_status = "rejected";
+        } else {
+            return res.status(400).json({ success: false, message: "Invalid action. Use 'accept' or 'reject'." });
+        }
+
+        appointment.follow_up_responded_at = new Date();
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Follow-up request ${action === "accept" ? "accepted" : "rejected"} successfully.`,
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error responding to follow-up request.",
+            error: error.message
+        });
+    }
+};
+
+// Doctor cancels accepted follow-up meeting with cancellation form reason
+exports.cancelFollowUp = async (req, res) => {
+    try {
+        const { cancel_reason } = req.body;
+        const appointment = await Appointment.findById(req.params.id);
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found." });
+        }
+
+        if (appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+
+        if (appointment.follow_up_status !== "accepted") {
+            return res.status(400).json({
+                success: false,
+                message: "Only accepted follow-up appointments can be cancelled."
+            });
+        }
+
+        if (!cancel_reason || !cancel_reason.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "A cancellation reason is required to cancel the follow-up appointment."
+            });
+        }
+
+        appointment.follow_up_status = "cancelled";
+        appointment.follow_up_cancel_reason = cancel_reason.trim();
+        appointment.follow_up_cancelled_at = new Date();
+        appointment.follow_up_cancelled_by = "doctor";
+
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Accepted follow-up appointment cancelled successfully.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error cancelling follow-up appointment.",
+            error: error.message
+        });
+    }
+};
+

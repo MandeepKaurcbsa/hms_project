@@ -177,9 +177,26 @@ exports.createPrescription = async (req, res) => {
 
         });
 
+        if (finalAge && Number(finalAge) > 0 && patient_id) {
+            try {
+                const pat = await Patient.findById(patient_id);
+                if (pat) {
+                    const currentAge = pat.dob ? Math.floor((new Date() - new Date(pat.dob)) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+                    if (!pat.dob || currentAge !== Number(finalAge)) {
+                        const approxBirthYear = new Date().getFullYear() - Number(finalAge);
+                        const updatedDob = new Date(`${approxBirthYear}-01-01`);
+                        await Patient.findByIdAndUpdate(patient_id, { dob: updatedDob });
+                    }
+                }
+            } catch (e) {}
+        }
+
         // Update appointment
         appointment.prescription_added = true;
         appointment.status = "completed";
+        if (normalizedFollowUpDate) {
+            appointment.follow_up_date = normalizedFollowUpDate;
+        }
         if (!appointment.meet_time_end) {
             appointment.meet_time_end = new Date();
         }
@@ -230,7 +247,7 @@ exports.getMyPrescriptions = async (req, res) => {
             doctor_id
 
         })
-        .populate("patient_id", "first_name last_name age gender phone email address blood_group")
+        .populate("patient_id", "first_name last_name dob age gender phone email address blood_group")
         .populate("appointment_id")
         .populate("medical_record_id")
         .sort({
@@ -275,7 +292,7 @@ exports.getPrescriptionByAppointment = async (req, res) => {
 
         const prescription = await Prescription.findOne({ appointment_id })
             .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
-            .populate("patient_id", "first_name last_name gender age blood_group phone email address")
+            .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
             .populate("appointment_id")
             .populate("medical_record_id");
 
@@ -289,7 +306,7 @@ exports.getPrescriptionByAppointment = async (req, res) => {
         // Fallback: Check if a MedicalRecord exists for this appointment
         const medicalRecord = await MedicalRecord.findOne({ appointment_id })
             .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
-            .populate("patient_id", "first_name last_name gender age blood_group phone email address")
+            .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
             .populate("appointment_id")
             .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
 
@@ -346,7 +363,7 @@ exports.getPrescriptionDetails = async (req, res) => {
 
         const prescription = await Prescription.findById(prescription_id)
             .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
-            .populate("patient_id", "first_name last_name gender age blood_group phone email address")
+            .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
             .populate("appointment_id")
             .populate("medical_record_id");
 
@@ -609,7 +626,7 @@ exports.getMyPatientPrescriptions = async (req, res) => {
 
         })
         .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
-        .populate("patient_id", "first_name last_name age gender phone email address blood_group")
+        .populate("patient_id", "first_name last_name dob age gender phone email address blood_group")
         .populate("appointment_id")
         .populate("medical_record_id")
         .sort({
@@ -655,7 +672,7 @@ exports.getAllPrescriptions = async (req, res) => {
 
         const prescriptions = await Prescription.find()
             .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
-            .populate("patient_id", "first_name last_name age gender phone email address blood_group")
+            .populate("patient_id", "first_name last_name dob age gender phone email address blood_group")
             .populate("appointment_id")
             .populate("medical_record_id")
             .sort({

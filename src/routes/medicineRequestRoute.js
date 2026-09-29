@@ -63,7 +63,14 @@ router.put(
     medicineRequestController.cancelMedicineRequest
 );
 
-// 8. Get single medicine request by ID (Must be last to avoid route collision!)
+// 8. Update medicine request (Pharmacist for own pending, Admin for any)
+router.put(
+    "/update/:id",
+    authMiddleware,
+    medicineRequestController.updateMedicineRequest
+);
+
+// 9. Get single medicine request by ID (Must be last to avoid route collision!)
 router.get(
     "/:id",
     authMiddleware,
