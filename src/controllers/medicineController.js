@@ -29,7 +29,10 @@ exports.createMedicine = async (req, res) => {
                 folder: 'medipulse/medicines'
             });
             medicine_image_url = result.secure_url;
-        } else if (medicine_image_url && medicine_image_url.startsWith('data:image')) {
+        } else if (medicine_image_url && medicine_image_url.startsWith('data:')) {
+            if (medicine_image_url.startsWith('data:application/octet-stream')) {
+                medicine_image_url = medicine_image_url.replace('data:application/octet-stream', 'data:image/jpeg');
+            }
             try {
                 const result = await cloudinary.uploader.upload(medicine_image_url, {
                     folder: 'medipulse/medicines'
@@ -37,7 +40,6 @@ exports.createMedicine = async (req, res) => {
                 medicine_image_url = result.secure_url;
             } catch (e) {
                 console.error("Cloudinary upload error in createMedicine:", e.message);
-                medicine_image_url = '/img/medicine_bottle.png';
             }
         }
 
@@ -125,12 +127,6 @@ exports.getAllMedicines = async (req, res) => {
         .select("-__v")
         .lean()
         .sort({ medicine_name: 1 });
-
-        medicines.forEach(m => {
-            if (m.medicine_image && m.medicine_image.length > 500 && !m.medicine_image.startsWith('http')) {
-                m.medicine_image = '/img/medicine_bottle.png';
-            }
-        });
 
         return res.status(200).json({
             success: true,
@@ -371,25 +367,50 @@ exports.updateMedicine = async (req, res) => {
         if (price !== undefined) medicine.price = price;
         if (description !== undefined) medicine.description = description;
         if (medicine_image !== undefined) {
-            if (medicine_image && medicine_image.startsWith('data:image')) {
+            let imgToSave = medicine_image;
+            if (imgToSave && imgToSave.startsWith('data:')) {
+                if (imgToSave.startsWith('data:application/octet-stream')) {
+                    imgToSave = imgToSave.replace('data:application/octet-stream', 'data:image/jpeg');
+                }
                 try {
-                    const result = await cloudinary.uploader.upload(medicine_image, {
+                    const result = await cloudinary.uploader.upload(imgToSave, {
                         folder: 'medipulse/medicines'
                     });
-                    medicine.medicine_image = result.secure_url;
+                    imgToSave = result.secure_url;
                 } catch (e) {
                     console.error("Cloudinary upload error in updateMedicine:", e.message);
-                    medicine.medicine_image = '/img/medicine_bottle.png';
                 }
-            } else {
-                medicine.medicine_image = medicine_image;
             }
+            medicine.medicine_image = imgToSave;
         }
         if (requires_prescription !== undefined) medicine.requires_prescription = requires_prescription;
         if (mfg_date) medicine.mfg_date = mfg_date;
         if (expiry_date) medicine.expiry_date = expiry_date;
 
         await medicine.save();
+
+        // Sync update to corresponding MedicineRequest records as well
+        try {
+            const MedicineRequest = require("../models/medicineRequestModel");
+            const escapedName = medicine.medicine_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const matchingRequests = await MedicineRequest.find({
+                medicine_name: { $regex: new RegExp('^' + escapedName.replace(/\s+/g, '\\s*') + '$', 'i') }
+            });
+            for (let reqObj of matchingRequests) {
+                if (medicine_image !== undefined) reqObj.medicine_image = medicine.medicine_image;
+                if (medicine_name) reqObj.medicine_name = medicine.medicine_name;
+                if (generic_name !== undefined) reqObj.generic_name = medicine.generic_name;
+                if (category) reqObj.category = medicine.category;
+                if (manufacturer) reqObj.manufacturer = medicine.manufacturer;
+                if (strength) reqObj.strength = medicine.strength;
+                if (unit) reqObj.unit = medicine.unit;
+                if (price !== undefined) reqObj.price = medicine.price;
+                if (description !== undefined) reqObj.description = medicine.description;
+                await reqObj.save();
+            }
+        } catch (syncErr) {
+            console.error("Error syncing medicine updates to medicine requests:", syncErr.message);
+        }
 
         return res.status(200).json({
             success: true,

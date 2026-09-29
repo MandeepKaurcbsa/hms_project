@@ -67,7 +67,10 @@ exports.createMedicineRequest = async (req, res) => {
 
         // Upload base64 image to Cloudinary if provided
         let imageUrl = medicine_image || '';
-        if (imageUrl && imageUrl.startsWith('data:image')) {
+        if (imageUrl && imageUrl.startsWith('data:')) {
+            if (imageUrl.startsWith('data:application/octet-stream')) {
+                imageUrl = imageUrl.replace('data:application/octet-stream', 'data:image/jpeg');
+            }
             try {
                 const cloudinary = require("../config/cloudinary");
                 const result = await cloudinary.uploader.upload(imageUrl, {
@@ -76,7 +79,6 @@ exports.createMedicineRequest = async (req, res) => {
                 imageUrl = result.secure_url;
             } catch (e) {
                 console.error("Cloudinary upload error in createMedicineRequest:", e.message);
-                imageUrl = '/img/medicine_bottle.png';
             }
         }
 
@@ -219,12 +221,6 @@ exports.getPendingMedicineRequests = async (req, res) => {
             });
         }
 
-        pendingRequests.forEach(r => {
-            if (r.medicine_image && r.medicine_image.length > 500 && !r.medicine_image.startsWith('http')) {
-                r.medicine_image = '/img/medicine_bottle.png';
-            }
-        });
-
         return res.status(200).json({
             success: true,
             count: pendingRequests.length,
@@ -267,14 +263,15 @@ exports.approveMedicineRequest = async (req, res) => {
 
         // Check whether medicine already exists in inventory
         let medicineObj;
+        const escapedName = medicineRequest.medicine_name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const existingMedicine = await Medicine.findOne({
-            medicine_name: medicineRequest.medicine_name,
-            strength: medicineRequest.strength
+            medicine_name: { $regex: new RegExp('^' + escapedName.replace(/\s+/g, '\\s*') + '$', 'i') }
         });
 
         if (existingMedicine) {
             existingMedicine.stock_available = (existingMedicine.stock_available || 0) + (medicineRequest.stock_available || 0);
             if (medicineRequest.price) existingMedicine.price = medicineRequest.price;
+            if (medicineRequest.medicine_image) existingMedicine.medicine_image = medicineRequest.medicine_image;
             await existingMedicine.save();
             medicineObj = existingMedicine;
         } else {
@@ -402,12 +399,6 @@ exports.getAllMedicineRequests = async (req, res) => {
                 }
             });
         }
-
-        medicineRequests.forEach(r => {
-            if (r.medicine_image && r.medicine_image.length > 500 && !r.medicine_image.startsWith('http')) {
-                r.medicine_image = '/img/medicine_bottle.png';
-            }
-        });
 
         return res.status(200).json({
             success: true,
@@ -544,7 +535,24 @@ exports.updateMedicineRequest = async (req, res) => {
         if (price !== undefined) medicineRequest.price = Number(price);
         if (stock_available !== undefined) medicineRequest.stock_available = Number(stock_available);
         if (description !== undefined) medicineRequest.description = description;
-        if (medicine_image !== undefined) medicineRequest.medicine_image = medicine_image;
+        if (medicine_image !== undefined) {
+            let reqImg = medicine_image;
+            if (reqImg && reqImg.startsWith('data:')) {
+                if (reqImg.startsWith('data:application/octet-stream')) {
+                    reqImg = reqImg.replace('data:application/octet-stream', 'data:image/jpeg');
+                }
+                try {
+                    const cloudinary = require("../config/cloudinary");
+                    const result = await cloudinary.uploader.upload(reqImg, {
+                        folder: 'medipulse/medicine_requests'
+                    });
+                    reqImg = result.secure_url;
+                } catch (e) {
+                    console.error("Cloudinary upload error in updateMedicineRequest:", e.message);
+                }
+            }
+            medicineRequest.medicine_image = reqImg;
+        }
         if (requires_prescription !== undefined) medicineRequest.requires_prescription = Boolean(requires_prescription);
         if (mfg_date !== undefined) medicineRequest.mfg_date = mfg_date;
         if (expiry_date !== undefined) medicineRequest.expiry_date = expiry_date;
@@ -555,12 +563,11 @@ exports.updateMedicineRequest = async (req, res) => {
 
         await medicineRequest.save();
 
-        // If the request is already Approved, sync updates to the Medicine inventory item as well
-        if (medicineRequest.status === "Approved") {
-            const medicineObj = await Medicine.findOne({
-                medicine_name: medicineRequest.medicine_name,
-                strength: medicineRequest.strength
-            });
+        // If the request is Approved (or matching medicine exists in inventory), sync updates to the Medicine inventory item as well
+        const escapedReqName = medicineRequest.medicine_name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const medicineObj = await Medicine.findOne({
+            medicine_name: { $regex: new RegExp('^' + escapedReqName.replace(/\s+/g, '\\s*') + '$', 'i') }
+        });
             if (medicineObj) {
                 if (medicine_name !== undefined) medicineObj.medicine_name = medicine_name.trim();
                 if (generic_name !== undefined) medicineObj.generic_name = generic_name ? generic_name.trim() : "";
@@ -571,7 +578,7 @@ exports.updateMedicineRequest = async (req, res) => {
                 if (price !== undefined) medicineObj.price = Number(price);
                 if (stock_available !== undefined) medicineObj.stock_available = Number(stock_available);
                 if (description !== undefined) medicineObj.description = description;
-                if (medicine_image !== undefined) medicineObj.medicine_image = medicine_image;
+                if (medicine_image !== undefined) medicineObj.medicine_image = medicineRequest.medicine_image;
                 if (requires_prescription !== undefined) medicineObj.requires_prescription = Boolean(requires_prescription);
                 if (mfg_date !== undefined) medicineObj.mfg_date = mfg_date;
                 if (expiry_date !== undefined) medicineObj.expiry_date = expiry_date;
