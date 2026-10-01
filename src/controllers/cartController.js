@@ -223,6 +223,13 @@ exports.getMyCart = async (req, res) => {
             medicineMap.set(medicine._id.toString(), medicine);
         });
 
+        // Clean up medicines that no longer exist in the system
+        const initialItemCount = cart.items.length;
+        cart.items = cart.items.filter(item => medicineMap.has(item.medicine_id.toString()));
+        if (cart.items.length !== initialItemCount) {
+            await cart.save();
+        }
+
         let totalQuantity = 0;
         let grandTotal = 0;
 
@@ -676,18 +683,17 @@ exports.decreaseQuantity = async (req, res) => {
 
         }
 
-        const Medicine = require("../models/medicineModel");
+        const medicine = await Medicine.findById(medicine_id);
 
-const medicine = await Medicine.findById(medicine_id);
-
-if (!medicine) {
-
-    return res.status(404).json({
-        success: false,
-        message: "Medicine no longer exists."
-    });
-
-}
+        if (!medicine) {
+            cart.items.splice(cartItemIndex, 1);
+            await cart.save();
+            return res.status(200).json({
+                success: true,
+                message: "Removed unavailable medicine from cart.",
+                medicine_id
+            });
+        }
 
         // Otherwise decrease quantity
         cartItem.quantity -= 1;

@@ -51,6 +51,9 @@ app.use("/med-rec", medicineRecordRoutes);
 const cartRoutes = require("./src/routes/cartRoute");
 app.use("/cart", cartRoutes);
 
+const wishlistRoutes = require("./src/routes/wishlistRoute");
+app.use("/wishlist", wishlistRoutes);
+
 const phsalesRoutes = require("./src/routes/phSalesRoute");
 app.use("/sale", phsalesRoutes);
 
