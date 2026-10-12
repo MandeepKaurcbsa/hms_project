@@ -77,4 +77,25 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Socket.IO signaling server ready`);
+
+  // Background scheduler to auto-expire appointments and follow-up meets every 30s
+  setInterval(async () => {
+    try {
+      const Appointment = require("./src/models/appointModel");
+      const { checkAndExpireAppointments } = require("./src/controllers/appointController");
+      if (checkAndExpireAppointments) {
+        const activeAppts = await Appointment.find({
+          $or: [
+            { status: { $in: ["pending", "confirmed"] } },
+            { follow_up_status: { $in: ["requested", "accepted"] } }
+          ]
+        });
+        if (activeAppts && activeAppts.length > 0) {
+          await checkAndExpireAppointments(activeAppts);
+        }
+      }
+    } catch (err) {
+      // Non-fatal background error
+    }
+  }, 30000);
 });

@@ -101,8 +101,31 @@ router.put("/doctor/:id/respond-followup", authMiddleware, doctorOnly, appointme
 // doctor cancels accepted follow-up meeting with cancellation form reason
 router.put("/doctor/:id/cancel-followup", authMiddleware, doctorOnly, appointmentController.cancelFollowUp);
 
+// doctor starts online follow-up meet
+router.post("/doctor/:id/followup-start", authMiddleware, doctorOnly, appointmentController.doctorStartFollowUp);
+router.put("/doctor/:id/followup-start", authMiddleware, doctorOnly, appointmentController.doctorStartFollowUp);
+
+// doctor completes follow-up meet (online or offline)
+router.post("/doctor/:id/followup-complete", authMiddleware, doctorOnly, appointmentController.doctorCompleteFollowUp);
+router.put("/doctor/:id/followup-complete", authMiddleware, doctorOnly, appointmentController.doctorCompleteFollowUp);
+
+// doctor marks offline follow-up patient no-show
+router.put("/doctor/:id/followup-no-show", authMiddleware, doctorOnly, appointmentController.doctorMarkFollowUpNoShow);
+
+// doctor skips prescription for follow-up consultation
+router.put("/doctor/:id/followup-skip-prescription", authMiddleware, doctorOnly, appointmentController.doctorSkipFollowUpPrescription);
+router.post("/doctor/:id/followup-skip-prescription", authMiddleware, doctorOnly, appointmentController.doctorSkipFollowUpPrescription);
+
 // patient or pharmacist requests follow-up
 router.put("/:id/request-followup", authMiddleware, userOrPharmacist, appointmentController.requestFollowUp);
+
+// patient or pharmacist joins online follow-up meet
+router.post("/:id/followup-join", authMiddleware, userOrPharmacist, appointmentController.patientJoinFollowUp);
+router.put("/:id/followup-join", authMiddleware, userOrPharmacist, appointmentController.patientJoinFollowUp);
+
+// patient or pharmacist marks arrived / available at clinic for offline follow-up
+router.post("/:id/followup-arrive", authMiddleware, userOrPharmacist, appointmentController.patientArrivedFollowUp);
+router.put("/:id/followup-arrive", authMiddleware, userOrPharmacist, appointmentController.patientArrivedFollowUp);
 
 //--------------------------------by user or pharmacist (wildcard — must be LAST) ----------
 

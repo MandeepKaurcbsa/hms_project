@@ -3,6 +3,30 @@ const Appointment = require("../models/appointModel");
 const MedicalRecord = require("../models/medicalRecordModel");
 const Medicine = require("../models/medicineModel");
 const Patient = require("../models/patientModel");
+const Doctor = require("../models/doctorModel");
+
+const parseTimeToHoursMinutes = (timeStr) => {
+    let hours = 17;
+    let minutes = 0;
+    if (!timeStr) return { hours, minutes };
+    const clean = String(timeStr).trim();
+    if (clean.toLowerCase().includes("am") || clean.toLowerCase().includes("pm")) {
+        const isPm = clean.toLowerCase().includes("pm");
+        const numPart = clean.replace(/(am|pm)/gi, "").trim();
+        const parts = numPart.split(":").map(Number);
+        let h = parts[0] || 0;
+        const m = parts[1] || 0;
+        if (isPm && h < 12) h += 12;
+        if (!isPm && h === 12) h = 0;
+        hours = h;
+        minutes = m;
+    } else if (clean.includes(":")) {
+        const parts = clean.split(":").map(Number);
+        hours = parts[0] || 0;
+        minutes = parts[1] || 0;
+    }
+    return { hours, minutes };
+};
 
 // --------------------------------doctor side -----------------------------------------------------
 
@@ -24,10 +48,13 @@ exports.createPrescription = async (req, res) => {
             gender,
             medicines,
             general_instructions,
-            follow_up_date
+            follow_up_date,
+            prescription_type,
+            is_follow_up
 
         } = req.body;
 
+        const isFollowUp = is_follow_up === true || is_follow_up === "true" || prescription_type === "follow_up";
         const finalAge = patient_age !== undefined ? Number(patient_age) : (age !== undefined ? Number(age) : null);
         const finalGender = (patient_gender || gender || "").toLowerCase();
 
@@ -63,22 +90,32 @@ exports.createPrescription = async (req, res) => {
 
         }
 
-        // Check prescription already exists
-        const existingPrescription = await Prescription.findOne({
-
-            appointment_id
-
-        });
-
-        if (existingPrescription) {
-
-            return res.status(400).json({
-
-                success: false,
-                message: "Prescription already exists for this appointment."
-
+        if (isFollowUp) {
+            // Check follow-up prescription already exists
+            const existingFollowUp = await Prescription.findOne({
+                appointment_id,
+                prescription_type: "follow_up"
             });
 
+            if (existingFollowUp || appointment.follow_up_prescription_status === "added") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Follow-up prescription has already been added for this appointment and cannot be modified."
+                });
+            }
+        } else {
+            // Check primary prescription already exists or is already added to appointment
+            const existingPrescription = await Prescription.findOne({
+                appointment_id,
+                prescription_type: { $ne: "follow_up" }
+            });
+
+            if (existingPrescription) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Prescription has already been added for this appointment and cannot be modified."
+                });
+            }
         }
 
         // Check medical record exists
@@ -173,7 +210,9 @@ exports.createPrescription = async (req, res) => {
 
             general_instructions,
 
-            follow_up_date: normalizedFollowUpDate
+            follow_up_date: normalizedFollowUpDate,
+
+            prescription_type: isFollowUp ? "follow_up" : "primary"
 
         });
 
@@ -192,16 +231,61 @@ exports.createPrescription = async (req, res) => {
         }
 
         // Update appointment
-        appointment.prescription_added = true;
-        appointment.status = "completed";
-        if (normalizedFollowUpDate) {
-            appointment.follow_up_date = normalizedFollowUpDate;
-        }
-        if (!appointment.meet_time_end) {
-            appointment.meet_time_end = new Date();
-        }
-        if (appointment.meet_time_start && appointment.meet_time_end) {
-            appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+        if (isFollowUp) {
+            appointment.follow_up_prescription_status = "added";
+            appointment.follow_up_prescription_id = prescription._id;
+            if (normalizedFollowUpDate) {
+                appointment.follow_up_date = normalizedFollowUpDate;
+                appointment.assigned_follow_up_date = normalizedFollowUpDate;
+            }
+        } else {
+            appointment.prescription_added = true;
+            appointment.status = "completed";
+            if (normalizedFollowUpDate) {
+                appointment.follow_up_date = normalizedFollowUpDate;
+                appointment.assigned_follow_up_date = normalizedFollowUpDate;
+                // Set assigned follow-up time to the doctor's last meet time of the day (minimum 17:00)
+                let lastMeetHour = 17;
+                let lastMeetMin = 0;
+                try {
+                    const doc = await Doctor.findById(doctor_id || req.user.id).select("work_time_end");
+                    if (doc && doc.work_time_end) {
+                        const parsed = parseTimeToHoursMinutes(doc.work_time_end);
+                        if (parsed.hours > 17 || (parsed.hours === 17 && parsed.minutes > 0)) {
+                            lastMeetHour = parsed.hours;
+                            lastMeetMin = parsed.minutes;
+                        }
+                    }
+                } catch (err) {}
+                appointment.assigned_follow_up_time = `${String(lastMeetHour).padStart(2, '0')}:${String(lastMeetMin).padStart(2, '0')}`;
+                appointment.follow_up_status = "none";
+            } else {
+                appointment.follow_up_date = null;
+                appointment.assigned_follow_up_date = null;
+                appointment.assigned_follow_up_time = null;
+                appointment.follow_up_time = null;
+                appointment.follow_up_status = "none";
+                appointment.follow_up_reason = null;
+                appointment.follow_up_expire_reason = null;
+                appointment.follow_up_expired_at = null;
+                appointment.follow_up_requested_at = null;
+                appointment.follow_up_requested_by = null;
+                appointment.follow_up_responded_at = null;
+                appointment.follow_up_cancel_reason = null;
+                appointment.follow_up_cancelled_at = null;
+                appointment.follow_up_cancelled_by = null;
+                appointment.follow_up_doctor_joined = false;
+                appointment.follow_up_patient_joined = false;
+                appointment.follow_up_patient_arrived = false;
+                appointment.follow_up_meet_time_start = null;
+                appointment.follow_up_meet_time_end = null;
+            }
+            if (!appointment.meet_time_end) {
+                appointment.meet_time_end = new Date();
+            }
+            if (appointment.meet_time_start && appointment.meet_time_end) {
+                appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+            }
         }
 
         await appointment.save();
@@ -289,8 +373,16 @@ exports.getMyPrescriptions = async (req, res) => {
 exports.getPrescriptionByAppointment = async (req, res) => {
     try {
         const { appointment_id } = req.params;
+        const { type } = req.query;
 
-        const prescription = await Prescription.findOne({ appointment_id })
+        const query = { appointment_id };
+        if (type === "follow_up") {
+            query.prescription_type = "follow_up";
+        } else {
+            query.prescription_type = { $ne: "follow_up" };
+        }
+
+        const prescription = await Prescription.findOne(query)
             .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
             .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
             .populate("appointment_id")
@@ -300,6 +392,13 @@ exports.getPrescriptionByAppointment = async (req, res) => {
             return res.status(200).json({
                 success: true,
                 prescription
+            });
+        }
+
+        if (type === "follow_up") {
+            return res.status(404).json({
+                success: false,
+                message: "Follow-up prescription not found for this appointment."
             });
         }
 
@@ -382,7 +481,7 @@ exports.getPrescriptionDetails = async (req, res) => {
         // Doctor can view only own prescriptions
         if (
             req.user.role === "doctor" &&
-            prescription.doctor_id !== req.user.id
+            String(prescription.doctor_id?._id || prescription.doctor_id) !== String(req.user.id)
         ) {
 
             return res.status(403).json({
@@ -452,154 +551,18 @@ if (req.user.role === "user") {
 
 // Update Prescription
 exports.updatePrescription = async (req, res) => {
-
     try {
-
-        const doctor_id = req.user.id;
-        const { prescription_id } = req.params;
-
-        const {
-
-            medicines,
-            general_instructions,
-            follow_up_date,
-            status
-
-        } = req.body;
-
-        const prescription = await Prescription.findById(prescription_id);
-
-        if (!prescription) {
-
-            return res.status(404).json({
-
-                success: false,
-                message: "Prescription not found."
-
-            });
-
-        }
-
-        // Doctor can update only own prescription
-        if (prescription.doctor_id !== doctor_id) {
-
-            return res.status(403).json({
-
-                success: false,
-                message: "Access denied."
-
-            });
-
-        }
-
-        // Update medicines if provided
-        if (medicines) {
-
-            if (!Array.isArray(medicines) || medicines.length === 0) {
-
-                return res.status(400).json({
-
-                    success: false,
-                    message: "At least one medicine is required."
-
-                });
-
-            }
-
-            const updatedMedicines = [];
-
-            for (const item of medicines) {
-
-                const medicine = await Medicine.findById(item.medicine_id);
-
-                if (!medicine) {
-
-                    return res.status(404).json({
-
-                        success: false,
-                        message: `Medicine not found: ${item.medicine_id}`
-
-                    });
-
-                }
-
-                if (medicine.status !== "active") {
-
-                    return res.status(400).json({
-
-                        success: false,
-                        message: `${medicine.medicine_name} is currently unavailable.`
-
-                    });
-
-                }
-
-                updatedMedicines.push({
-
-                    medicine_id: medicine._id,
-                    medicine_name: medicine.medicine_name,
-                    generic_name: medicine.generic_name,
-                    strength: medicine.strength,
-
-                    dosage: item.dosage,
-                    frequency: item.frequency,
-                    duration: item.duration,
-                    quantity: item.quantity,
-                    instructions: item.instructions || ""
-
-                });
-
-            }
-
-            prescription.medicines = updatedMedicines;
-
-        }
-
-        // Update optional fields
-        if (general_instructions !== undefined) {
-
-            prescription.general_instructions = general_instructions;
-
-        }
-
-        if (follow_up_date !== undefined) {
-            if (follow_up_date && typeof follow_up_date === "string" && follow_up_date.trim() !== "") {
-                prescription.follow_up_date = new Date(follow_up_date);
-            } else {
-                prescription.follow_up_date = null;
-            }
-        }
-
-        if (status !== undefined) {
-
-            prescription.status = status;
-
-        }
-
-        await prescription.save();
-
-        return res.status(200).json({
-
-            success: true,
-            message: "Prescription updated successfully.",
-            prescription
-
+        return res.status(403).json({
+            success: false,
+            message: "Prescription cannot be modified or updated once added."
         });
-
-    }
-
-    catch (error) {
-
+    } catch (error) {
         return res.status(500).json({
-
             success: false,
             message: "Failed to update prescription.",
             error: error.message
-
         });
-
     }
-
 };
 
 // ---------------------------patient side -----------------------------------------------

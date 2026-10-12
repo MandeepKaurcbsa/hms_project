@@ -98,16 +98,20 @@ exports.createMedicalRecord = async (req, res) => {
             });
         }
 
-        // Check duplicate record
-        const existingRecord = await MedicalRecord.findOne({
-            appointment_id
-        });
+        const isFollowUp = req.body.is_follow_up === true || req.body.is_follow_up === "true" || req.body.record_type === "follow_up";
 
-        if (existingRecord) {
-            return res.status(409).json({
-                success: false,
-                message: "Medical record already exists for this appointment."
+        // Check duplicate record
+        if (!isFollowUp) {
+            const existingRecord = await MedicalRecord.findOne({
+                appointment_id
             });
+
+            if (existingRecord) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Medical record already exists for this appointment."
+                });
+            }
         }
 
         // Create record
@@ -127,8 +131,8 @@ exports.createMedicalRecord = async (req, res) => {
             visit_date
         });
 
-        // Update appointment if prescription was attached
-        if (prescription && prescription.trim() !== '') {
+        // Update appointment if primary prescription was attached
+        if (!isFollowUp && prescription && prescription.trim() !== '') {
             appointment.prescription_added = true;
             appointment.status = "completed";
             if (!appointment.meet_time_end) {
@@ -136,6 +140,33 @@ exports.createMedicalRecord = async (req, res) => {
             }
             if (appointment.meet_time_start && appointment.meet_time_end) {
                 appointment.meet_time = Math.max(1, Math.round((new Date(appointment.meet_time_end) - new Date(appointment.meet_time_start)) / 60000));
+            }
+            if (follow_up_date) {
+                const normalizedFDate = new Date(follow_up_date);
+                appointment.follow_up_date = normalizedFDate;
+                appointment.assigned_follow_up_date = normalizedFDate;
+                let lastMeetHour = 17;
+                let lastMeetMin = 0;
+                try {
+                    const Doctor = require("../models/doctorModel");
+                    const doc = await Doctor.findById(doctor_id).select("work_time_end");
+                    if (doc && doc.work_time_end) {
+                        const clean = String(doc.work_time_end).trim();
+                        const isPm = clean.toLowerCase().includes('pm');
+                        const numPart = clean.replace(/(am|pm)/gi, '').trim();
+                        const parts = numPart.split(':').map(Number);
+                        let h = parts[0] || 0;
+                        const m = parts[1] || 0;
+                        if (isPm && h < 12) h += 12;
+                        if (!isPm && h === 12) h = 0;
+                        if (h > 17 || (h === 17 && m > 0)) {
+                            lastMeetHour = h;
+                            lastMeetMin = m;
+                        }
+                    }
+                } catch (err) {}
+                appointment.assigned_follow_up_time = `${String(lastMeetHour).padStart(2, '0')}:${String(lastMeetMin).padStart(2, '0')}`;
+                appointment.follow_up_status = "none";
             }
             await appointment.save();
         }
@@ -264,6 +295,15 @@ exports.updateMedicalRecord = async (req, res) => {
             return res.status(403).json({
                 success: false,
                 message: "You are not authorized to update this medical record."
+            });
+        }
+
+        // Cannot modify if prescription has been added
+        const appointment = await Appointment.findById(medicalRecord.appointment_id);
+        if (appointment && appointment.prescription_added) {
+            return res.status(403).json({
+                success: false,
+                message: "Prescription has already been added. Consultation record and follow-up status cannot be modified."
             });
         }
 

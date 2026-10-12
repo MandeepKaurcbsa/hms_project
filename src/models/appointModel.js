@@ -175,6 +175,14 @@ const appointmentSchema = new mongoose.Schema({
     },
 
     // ── Follow-up Appointment Details ──────────────────────────────────────
+    assigned_follow_up_date: {
+        type: Date,
+        default: null
+    },
+    assigned_follow_up_time: {
+        type: String,
+        default: null
+    },
     follow_up_date: {
         type: Date,
         default: null
@@ -189,7 +197,7 @@ const appointmentSchema = new mongoose.Schema({
     },
     follow_up_status: {
         type: String,
-        enum: ["none", "requested", "accepted", "rejected", "cancelled"],
+        enum: ["none", "requested", "accepted", "rejected", "cancelled", "expired", "completed"],
         default: "none",
         required: true
     },
@@ -217,6 +225,60 @@ const appointmentSchema = new mongoose.Schema({
     follow_up_cancelled_by: {
         type: String,
         enum: ["doctor", null],
+        default: null
+    },
+    follow_up_expire_reason: {
+        type: String,
+        default: null
+    },
+    follow_up_expired_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_completed_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_doctor_joined: {
+        type: Boolean,
+        default: false
+    },
+    follow_up_doctor_joined_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_patient_joined: {
+        type: Boolean,
+        default: false
+    },
+    follow_up_patient_joined_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_patient_arrived: {
+        type: Boolean,
+        default: false
+    },
+    follow_up_patient_arrived_at: {
+        type: Date,
+        default: null
+    },
+    follow_up_meet_time_start: {
+        type: Date,
+        default: null
+    },
+    follow_up_meet_time_end: {
+        type: Date,
+        default: null
+    },
+    follow_up_prescription_status: {
+        type: String,
+        enum: ["none", "pending", "skipped", "added"],
+        default: "none"
+    },
+    follow_up_prescription_id: {
+        type: String,
+        ref: "Prescription",
         default: null
     }
 }, {

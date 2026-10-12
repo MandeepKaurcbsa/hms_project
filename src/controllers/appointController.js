@@ -2,94 +2,239 @@ const Appointment = require("../models/appointModel");
 const Doctor = require("../models/doctorModel");
 const Patient = require("../models/patientModel");
 const User = require("../models/userModel");
+const Prescription = require("../models/prescriptionModel");
 const { sendAppointmentConfirmedEmail, sendAppointmentRejectedEmail, sendDoctorPaymentReceivedEmail } = require("../services/emailService");
 
-// Auto-expire appointments whose scheduled time passed without action (pending) or meeting start limit crossed (confirmed)
+// Helper to parse follow-up scheduled date and time into a precise Date object
+const getFollowUpScheduledDateTime = (appt) => {
+    if (!appt || !appt.follow_up_date) return null;
+    const timeStr = String(appt.follow_up_time || appt.appointment_time || "10:00").trim();
+    let hours = 0;
+    let minutes = 0;
+
+    if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
+        const isPm = timeStr.toLowerCase().includes('pm');
+        const cleanTime = timeStr.replace(/(am|pm)/gi, '').trim();
+        const parts = cleanTime.split(':').map(Number);
+        hours = parts[0] || 0;
+        minutes = parts[1] || 0;
+        if (isPm && hours < 12) hours += 12;
+        if (!isPm && hours === 12) hours = 0;
+    } else {
+        const parts = timeStr.split(':').map(Number);
+        hours = parts[0] || 0;
+        minutes = parts[1] || 0;
+    }
+
+    const d = new Date(appt.follow_up_date);
+    let year, month, date;
+    if (typeof appt.follow_up_date === 'string' && appt.follow_up_date.includes('-')) {
+        const dateParts = appt.follow_up_date.split('T')[0].split('-').map(Number);
+        year = dateParts[0];
+        month = dateParts[1] - 1;
+        date = dateParts[2];
+    } else {
+        year = d.getFullYear();
+        month = d.getMonth();
+        date = d.getDate();
+    }
+    return new Date(year, month, date, hours, minutes, 0, 0);
+};
+
+const parseTimeToHoursMinutes = (timeStr) => {
+    let hours = 17;
+    let minutes = 0;
+    if (!timeStr) return { hours, minutes };
+    const clean = String(timeStr).trim();
+    if (clean.toLowerCase().includes("am") || clean.toLowerCase().includes("pm")) {
+        const isPm = clean.toLowerCase().includes("pm");
+        const numPart = clean.replace(/(am|pm)/gi, "").trim();
+        const parts = numPart.split(":").map(Number);
+        let h = parts[0] || 0;
+        const m = parts[1] || 0;
+        if (isPm && h < 12) h += 12;
+        if (!isPm && h === 12) h = 0;
+        hours = h;
+        minutes = m;
+    } else if (clean.includes(":")) {
+        const parts = clean.split(":").map(Number);
+        hours = parts[0] || 0;
+        minutes = parts[1] || 0;
+    }
+    return { hours, minutes };
+};
+
+// Auto-expire appointments and follow-up meets whose scheduled time or meeting start window has crossed
 const checkAndExpireAppointments = async (appointments) => {
     if (!appointments) return;
     const list = Array.isArray(appointments) ? appointments : [appointments];
     const now = new Date();
 
     for (const appt of list) {
-        if (!appt || !appt.appointment_date || !appt.appointment_time) continue;
-        if (!["pending", "confirmed"].includes(appt.status)) continue;
+        if (!appt) continue;
 
-        const apptDate = new Date(appt.appointment_date);
-        const timeStr = String(appt.appointment_time).trim();
-        let hours = 0;
-        let minutes = 0;
+        // ── 1. Primary appointment expiration ──
+        if (appt.appointment_date && appt.appointment_time && ["pending", "confirmed"].includes(appt.status)) {
+            const apptDate = new Date(appt.appointment_date);
+            const timeStr = String(appt.appointment_time).trim();
+            let hours = 0;
+            let minutes = 0;
 
-        if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
-            const isPm = timeStr.toLowerCase().includes('pm');
-            const cleanTime = timeStr.replace(/(am|pm)/gi, '').trim();
-            const parts = cleanTime.split(':').map(Number);
-            hours = parts[0] || 0;
-            minutes = parts[1] || 0;
-            if (isPm && hours < 12) hours += 12;
-            if (!isPm && hours === 12) hours = 0;
-        } else {
-            const parts = timeStr.split(':').map(Number);
-            hours = parts[0] || 0;
-            minutes = parts[1] || 0;
-        }
-
-        const year = apptDate.getUTCFullYear();
-        const month = apptDate.getUTCMonth();
-        const date = apptDate.getUTCDate();
-        const scheduled = new Date(year, month, date, hours, minutes, 0, 0);
-
-        let shouldExpire = false;
-        let reason = "";
-        let isPatientNoShow = false;
-        let isDoctorNoShow = false;
-
-        if (appt.status === "pending") {
-            if (now > scheduled) {
-                shouldExpire = true;
-                reason = "Expired: Scheduled appointment time passed without doctor action (confirmation/rejection)";
-                isDoctorNoShow = true;
+            if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
+                const isPm = timeStr.toLowerCase().includes('pm');
+                const cleanTime = timeStr.replace(/(am|pm)/gi, '').trim();
+                const parts = cleanTime.split(':').map(Number);
+                hours = parts[0] || 0;
+                minutes = parts[1] || 0;
+                if (isPm && hours < 12) hours += 12;
+                if (!isPm && hours === 12) hours = 0;
+            } else {
+                const parts = timeStr.split(':').map(Number);
+                hours = parts[0] || 0;
+                minutes = parts[1] || 0;
             }
-        } else if (appt.status === "confirmed") {
-            const expireCutoff = new Date(scheduled.getTime() + 30 * 60 * 1000);
-            if (now > expireCutoff) {
-                shouldExpire = true;
-                if (appt.payment_status !== "paid") {
-                    reason = "Expired: Appointment fee was not paid within 30 minutes of scheduled time";
-                    isPatientNoShow = true;
-                } else if (appt.consult_mode === "online") {
-                    if (appt.meet_time_start) {
-                        reason = "Expired: Doctor joined online meet, but patient failed to join within 30 minutes";
-                        isPatientNoShow = true;
-                    } else {
-                        reason = "Expired: Doctor did not join online meeting within 30 minutes of scheduled time";
-                        isDoctorNoShow = true;
-                    }
-                } else {
-                    reason = "Expired: Scheduled time passed without doctor marking consultation as completed or recording patient no-show (Doctor's Fault)";
+
+            const year = apptDate.getUTCFullYear();
+            const month = apptDate.getUTCMonth();
+            const date = apptDate.getUTCDate();
+            const scheduled = new Date(year, month, date, hours, minutes, 0, 0);
+
+            let shouldExpire = false;
+            let reason = "";
+            let isPatientNoShow = false;
+            let isDoctorNoShow = false;
+
+            if (appt.status === "pending") {
+                if (now > scheduled) {
+                    shouldExpire = true;
+                    reason = "Expired: Scheduled appointment time passed without doctor action (confirmation/rejection)";
                     isDoctorNoShow = true;
                 }
+            } else if (appt.status === "confirmed") {
+                const expireCutoff = new Date(scheduled.getTime() + 30 * 60 * 1000);
+                if (now > expireCutoff) {
+                    shouldExpire = true;
+                    if (appt.payment_status !== "paid") {
+                        reason = "Expired: Appointment fee was not paid within 30 minutes of scheduled time";
+                        isPatientNoShow = true;
+                    } else if (appt.consult_mode === "online") {
+                        if (appt.meet_time_start) {
+                            reason = "Expired: Doctor joined online meet, but patient failed to join within 30 minutes";
+                            isPatientNoShow = true;
+                        } else {
+                            reason = "Expired: Doctor did not join online meeting within 30 minutes of scheduled time";
+                            isDoctorNoShow = true;
+                        }
+                    } else {
+                        reason = "Expired: Scheduled time passed without doctor marking consultation as completed or recording patient no-show (Doctor's Fault)";
+                        isDoctorNoShow = true;
+                    }
+                }
+            }
+
+            if (shouldExpire) {
+                appt.status = "expired";
+                appt.cancel_reason = reason;
+
+                if (isPatientNoShow) {
+                    appt.refund_status = "not_applicable";
+                    appt.refund_percentage = 0;
+                    appt.refund_amount = 0;
+                } else if (isDoctorNoShow && appt.payment_status === "paid") {
+                    appt.refund_percentage = 100;
+                    appt.refund_amount = appt.consultation_fee || 0;
+                    if (appt.refund_status !== "refunded") {
+                        appt.refund_status = "pending";
+                    }
+                } else {
+                    appt.refund_status = "not_applicable";
+                }
+
+                await appt.save().catch(() => {});
             }
         }
 
-        if (shouldExpire) {
-            appt.status = "expired";
-            appt.cancel_reason = reason;
-
-            if (isPatientNoShow) {
-                appt.refund_status = "not_applicable";
-                appt.refund_percentage = 0;
-                appt.refund_amount = 0;
-            } else if (isDoctorNoShow && appt.payment_status === "paid") {
-                appt.refund_percentage = 100;
-                appt.refund_amount = appt.consultation_fee || 0;
-                if (appt.refund_status !== "refunded") {
-                    appt.refund_status = "pending";
+        // ── 1.5. Synchronize follow_up_date from Prescription or MedicalRecord if set by doctor ──
+        if (appt.status === "completed" && !appt.follow_up_date && (!appt.follow_up_status || appt.follow_up_status === "none")) {
+            try {
+                const MedicalRecord = require("../models/medicalRecordModel");
+                const Prescription = require("../models/prescriptionModel");
+                const rec = await MedicalRecord.findOne({ appointment_id: appt._id, follow_up_date: { $ne: null } });
+                const presc = await Prescription.findOne({ appointment_id: appt._id, follow_up_date: { $ne: null } });
+                const fDate = presc?.follow_up_date || rec?.follow_up_date;
+                if (fDate) {
+                    appt.follow_up_date = fDate;
+                    appt.assigned_follow_up_date = fDate;
+                    if (!appt.assigned_follow_up_time) {
+                        appt.assigned_follow_up_time = "17:00";
+                    }
+                    appt.follow_up_status = "none";
+                    await appt.save().catch(() => {});
                 }
-            } else {
-                appt.refund_status = "not_applicable";
-            }
+            } catch (syncErr) {}
+        }
 
-            await appt.save().catch(() => {});
+        // ── 2. Follow-up meeting expiration ──
+        if (appt.follow_up_date && ["requested", "accepted"].includes(appt.follow_up_status)) {
+            const scheduledFU = getFollowUpScheduledDateTime(appt);
+            if (scheduledFU && !isNaN(scheduledFU.getTime())) {
+                const isPharmacist = appt.booker_role === "pharmacist" || appt.follow_up_requested_by === "pharmacist";
+
+                // SCENARIO 1:
+                // Patient/pharmacist sends request before assigned follow-up meet, and date/time passed,
+                // doctor does not confirm/reject it -> mark as expired:
+                // "Follow-up meet expired without doctor confirmation"
+                if (appt.follow_up_status === "requested") {
+                    if (now > scheduledFU) {
+                        appt.follow_up_status = "expired";
+                        appt.follow_up_expire_reason = "Follow-up meet expired without doctor confirmation";
+                        appt.follow_up_expired_at = now;
+                        await appt.save().catch(() => {});
+                    }
+                }
+                // SCENARIO 2 & 3:
+                // Doctor confirmed (accepted) follow-up meet -> check after 30-min window
+                else if (appt.follow_up_status === "accepted") {
+                    const expireCutoffFU = new Date(scheduledFU.getTime() + 30 * 60 * 1000);
+                    if (now > expireCutoffFU) {
+                        appt.follow_up_status = "expired";
+                        appt.follow_up_expired_at = now;
+
+                        if (appt.consult_mode === "online") {
+                            const doctorJoined = Boolean(appt.follow_up_doctor_joined || appt.follow_up_meet_time_start);
+                            const patientJoined = Boolean(appt.follow_up_patient_joined);
+
+                            if (doctorJoined && !patientJoined) {
+                                // SCENARIO 2 (Online): Doctor confirmed -> patient/pharmacist did not join
+                                appt.follow_up_expire_reason = isPharmacist
+                                    ? "Follow-up meet expired because of pharmacist unavailability"
+                                    : "Follow-up meet expired because of patient unavailability";
+                            } else if (patientJoined && !doctorJoined) {
+                                // SCENARIO 3 (Online): Patient/pharmacist available -> doctor did not join
+                                appt.follow_up_expire_reason = "Follow-up meet expired because of doctor unavailability";
+                            } else {
+                                // Neither joined -> doctor is practitioner required to initiate consultation
+                                appt.follow_up_expire_reason = "Follow-up meet expired because of doctor unavailability";
+                            }
+                        } else {
+                            // Offline Consultation mode
+                            const patientArrived = Boolean(appt.follow_up_patient_arrived);
+
+                            if (patientArrived) {
+                                // SCENARIO 3 (Offline): Patient/pharmacist available/arrived at clinic -> doctor did not mark complete
+                                appt.follow_up_expire_reason = "Follow-up meet expired because of doctor unavailability";
+                            } else {
+                                // SCENARIO 2 (Offline): Patient/pharmacist did not visit doctor
+                                appt.follow_up_expire_reason = isPharmacist
+                                    ? "Follow-up meet expired because of pharmacist unavailability"
+                                    : "Follow-up meet expired because of patient unavailability";
+                            }
+                        }
+
+                        await appt.save().catch(() => {});
+                    }
+                }
+            }
         }
     }
 };
@@ -195,7 +340,7 @@ exports.getMyAppointments = async (req, res) => {
         const appointments = await Appointment.find({
             user_id: req.user.id
         })
-        .populate("doctor_id", "first_name last_name specialization visit_address consult_fee phone email profile_img")
+        .populate("doctor_id", "first_name last_name specialization visit_address consult_fee phone email profile_img work_time_start work_time_end")
         .populate("patient_id", "first_name last_name");
 
         await checkAndExpireAppointments(appointments);
@@ -608,7 +753,7 @@ exports.getAllAppointments = async (req, res) => {
     try {
 
         const appointments = await Appointment.find()
-            .populate("doctor_id", "first_name last_name specialization visit_address")
+            .populate("doctor_id", "first_name last_name specialization visit_address work_time_start work_time_end")
             .populate("patient_id", "first_name last_name")
             .sort({ createdAt: -1 });
 
@@ -981,7 +1126,7 @@ exports.getPharmacistAppointments = async (req, res) => {
                 { patient_id: { $in: patientIds } }
             ]
         })
-            .populate("doctor_id", "first_name last_name specialization department consult_fee phone email profile_img visit_address")
+            .populate("doctor_id", "first_name last_name specialization department consult_fee phone email profile_img visit_address work_time_start work_time_end")
             .populate("patient_id", "first_name last_name gender age blood_group phone")
             .sort({ createdAt: -1, appointment_date: -1 });
 
@@ -1341,7 +1486,6 @@ exports.doctorMarkPatientNoShow = async (req, res) => {
 // Doctor sets / updates follow up date
 exports.setFollowUpDate = async (req, res) => {
     try {
-        const { follow_up_date } = req.body;
         const appointment = await Appointment.findById(req.params.id);
 
         if (!appointment) {
@@ -1352,26 +1496,18 @@ exports.setFollowUpDate = async (req, res) => {
             return res.status(403).json({ success: false, message: "Access denied." });
         }
 
-        if (!follow_up_date) {
-            appointment.follow_up_date = null;
-            appointment.follow_up_status = "none";
-        } else {
-            const dateObj = new Date(follow_up_date);
-            if (isNaN(dateObj.getTime())) {
-                return res.status(400).json({ success: false, message: "Invalid follow-up date." });
-            }
-            appointment.follow_up_date = dateObj;
-            if (appointment.follow_up_status === "none" || appointment.follow_up_status === "rejected") {
-                appointment.follow_up_status = "none";
-            }
+        // Check if prescription already exists or is marked as added
+        const existingPrescription = await Prescription.findOne({ appointment_id: appointment._id });
+        if (appointment.prescription_added || existingPrescription) {
+            return res.status(400).json({
+                success: false,
+                message: "Prescription has already been added. Doctor cannot add or update follow-up status."
+            });
         }
 
-        await appointment.save();
-
-        res.status(200).json({
-            success: true,
-            message: "Follow-up date updated successfully.",
-            appointment
+        return res.status(400).json({
+            success: false,
+            message: "Doctor can only set the follow-up consultation status while creating the prescription."
         });
     } catch (error) {
         res.status(500).json({
@@ -1397,6 +1533,15 @@ exports.requestFollowUp = async (req, res) => {
             return res.status(403).json({ success: false, message: "Access denied." });
         }
 
+        // Cannot request follow-up if doctor did not prescribe a follow-up
+        const doctorAssignedDate = appointment.assigned_follow_up_date || appointment.follow_up_date;
+        if (!doctorAssignedDate) {
+            return res.status(400).json({
+                success: false,
+                message: "No follow-up was prescribed by the doctor for this consultation."
+            });
+        }
+
         const { follow_up_date, follow_up_time, follow_up_reason } = req.body;
 
         let targetDate = follow_up_date ? new Date(follow_up_date) : appointment.follow_up_date;
@@ -1418,11 +1563,59 @@ exports.requestFollowUp = async (req, res) => {
             });
         }
 
+        // Ensure doctor's assigned follow-up deadline has not passed (lasts till the last meet time of the assigned date)
+        let lastMeetHour = 17;
+        let lastMeetMin = 0;
+        try {
+            const doc = await Doctor.findById(appointment.doctor_id).select("work_time_end");
+            if (doc && doc.work_time_end) {
+                const parsed = parseTimeToHoursMinutes(doc.work_time_end);
+                if (parsed.hours > 17 || (parsed.hours === 17 && parsed.minutes > 0)) {
+                    lastMeetHour = parsed.hours;
+                    lastMeetMin = parsed.minutes;
+                }
+            } else if (appointment.assigned_follow_up_time && appointment.assigned_follow_up_time !== appointment.appointment_time) {
+                const parsed = parseTimeToHoursMinutes(appointment.assigned_follow_up_time);
+                if (parsed.hours > 17 || (parsed.hours === 17 && parsed.minutes > 0)) {
+                    lastMeetHour = parsed.hours;
+                    lastMeetMin = parsed.minutes;
+                }
+            }
+        } catch (err) {}
+
+        if (doctorAssignedDate) {
+            const d = new Date(doctorAssignedDate);
+            let year, month, date;
+            if (typeof doctorAssignedDate === "string" && doctorAssignedDate.includes("-")) {
+                const dateParts = doctorAssignedDate.split("T")[0].split("-").map(Number);
+                year = dateParts[0];
+                month = dateParts[1] - 1;
+                date = dateParts[2];
+            } else {
+                year = d.getFullYear();
+                month = d.getMonth();
+                date = d.getDate();
+            }
+            const assignedDeadline = new Date(year, month, date, lastMeetHour, lastMeetMin, 59, 999);
+            if (new Date() > assignedDeadline) {
+                return res.status(400).json({
+                    success: false,
+                    message: "The doctor's assigned follow-up date and time has passed. A follow-up cannot be requested."
+                });
+            }
+        }
+
         if (appointment.follow_up_status === "requested") {
             return res.status(400).json({
                 success: false,
                 message: "Follow-up request is already pending doctor approval."
             });
+        }
+
+        // Preserve initial assigned follow-up date if not already set
+        if (!appointment.assigned_follow_up_date && appointment.follow_up_date) {
+            appointment.assigned_follow_up_date = appointment.follow_up_date;
+            appointment.assigned_follow_up_time = `${String(lastMeetHour).padStart(2, '0')}:${String(lastMeetMin).padStart(2, '0')}`;
         }
 
         const requesterRole = appointment.booker_role === "pharmacist" ? "pharmacist" : "user";
@@ -1433,6 +1626,20 @@ exports.requestFollowUp = async (req, res) => {
         appointment.follow_up_status = "requested";
         appointment.follow_up_requested_at = new Date();
         appointment.follow_up_requested_by = requesterRole;
+        appointment.follow_up_expire_reason = null;
+        appointment.follow_up_expired_at = null;
+        appointment.follow_up_completed_at = null;
+        appointment.follow_up_cancel_reason = null;
+        appointment.follow_up_cancelled_at = null;
+        appointment.follow_up_cancelled_by = null;
+        appointment.follow_up_doctor_joined = false;
+        appointment.follow_up_doctor_joined_at = null;
+        appointment.follow_up_patient_joined = false;
+        appointment.follow_up_patient_joined_at = null;
+        appointment.follow_up_patient_arrived = false;
+        appointment.follow_up_patient_arrived_at = null;
+        appointment.follow_up_meet_time_start = null;
+        appointment.follow_up_meet_time_end = null;
 
         await appointment.save();
 
@@ -1471,15 +1678,20 @@ exports.respondFollowUp = async (req, res) => {
             });
         }
 
-        // Strict date check for doctor accept/reject within given follow-up date
+        // Strict date & time check: if scheduled follow-up date & time has crossed and doctor did not confirm/reject,
+        // automatically mark as expired: "Follow-up meet expired without doctor confirmation"
         if (appointment.follow_up_date) {
-            const followUpEndDate = new Date(appointment.follow_up_date);
-            followUpEndDate.setHours(23, 59, 59, 999);
+            const scheduledFU = getFollowUpScheduledDateTime(appointment);
             const now = new Date();
-            if (now > followUpEndDate) {
+            if (scheduledFU && now > scheduledFU) {
+                appointment.follow_up_status = "expired";
+                appointment.follow_up_expire_reason = "Follow-up meet expired without doctor confirmation";
+                appointment.follow_up_expired_at = now;
+                await appointment.save();
                 return res.status(400).json({
                     success: false,
-                    message: "The follow-up date has passed. Doctors can only respond to follow-up requests within the given follow-up date."
+                    message: "The follow-up date and time has passed. Follow-up meet is marked as expired without doctor confirmation.",
+                    appointment
                 });
             }
         }
@@ -1557,4 +1769,221 @@ exports.cancelFollowUp = async (req, res) => {
         });
     }
 };
+
+// ── Follow-Up Meeting Attendance & Completion Controllers ──────────────────
+
+// Patient / Pharmacist joins online follow-up meet
+exports.patientJoinFollowUp = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) return res.status(404).json({ success: false, message: "Appointment not found." });
+        if (String(appointment.user_id) !== String(req.user.id)) {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+        if (appointment.follow_up_status !== "accepted") {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot join follow-up meeting when status is ${appointment.follow_up_status}.`
+            });
+        }
+
+        appointment.follow_up_patient_joined = true;
+        if (!appointment.follow_up_patient_joined_at) appointment.follow_up_patient_joined_at = new Date();
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Patient joined follow-up meet successfully.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error joining follow-up meet.", error: error.message });
+    }
+};
+
+// Patient / Pharmacist marks arrived / available at clinic (offline mode)
+exports.patientArrivedFollowUp = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) return res.status(404).json({ success: false, message: "Appointment not found." });
+        if (String(appointment.user_id) !== String(req.user.id)) {
+            return res.status(403).json({ success: false, message: "Access denied." });
+        }
+        if (appointment.follow_up_status !== "accepted") {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot confirm clinic visit when status is ${appointment.follow_up_status}.`
+            });
+        }
+
+        appointment.follow_up_patient_arrived = true;
+        if (!appointment.follow_up_patient_arrived_at) appointment.follow_up_patient_arrived_at = new Date();
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "You have marked your availability at the clinic for follow-up.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error marking clinic visit.", error: error.message });
+    }
+};
+
+// Doctor starts online follow-up meet
+exports.doctorStartFollowUp = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) return res.status(404).json({ success: false, message: "Appointment not found." });
+        if (appointment.doctor_id !== req.user.id) return res.status(403).json({ success: false, message: "Access denied." });
+
+        if (appointment.follow_up_status !== "accepted") {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot start follow-up meeting when status is ${appointment.follow_up_status}.`
+            });
+        }
+
+        const scheduledFU = getFollowUpScheduledDateTime(appointment);
+        if (scheduledFU) {
+            const now = new Date();
+            const windowEnd = new Date(scheduledFU.getTime() + 30 * 60 * 1000);
+            if (now < scheduledFU) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Follow-up meeting can only be started at scheduled time (${appointment.follow_up_time || ''}).`
+                });
+            }
+            if (now > windowEnd) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Follow-up meeting start window (30 mins from scheduled time) has expired."
+                });
+            }
+        }
+
+        appointment.follow_up_doctor_joined = true;
+        if (!appointment.follow_up_doctor_joined_at) appointment.follow_up_doctor_joined_at = new Date();
+        if (!appointment.follow_up_meet_time_start) appointment.follow_up_meet_time_start = new Date();
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Follow-up meeting started successfully. Time tracking initiated.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error starting follow-up meeting.", error: error.message });
+    }
+};
+
+// Doctor completes follow-up consultation (online or offline)
+exports.doctorCompleteFollowUp = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) return res.status(404).json({ success: false, message: "Appointment not found." });
+        if (appointment.doctor_id !== req.user.id) return res.status(403).json({ success: false, message: "Access denied." });
+
+        if (!["accepted", "completed"].includes(appointment.follow_up_status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot complete follow-up when status is ${appointment.follow_up_status}.`
+            });
+        }
+
+        appointment.follow_up_status = "completed";
+        if (!appointment.follow_up_completed_at) appointment.follow_up_completed_at = new Date();
+        if (!appointment.follow_up_meet_time_end) appointment.follow_up_meet_time_end = new Date();
+        if (!appointment.follow_up_prescription_status || appointment.follow_up_prescription_status === "none") {
+            appointment.follow_up_prescription_status = "pending";
+        }
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Follow-up consultation marked as completed successfully.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error completing follow-up consultation.", error: error.message });
+    }
+};
+
+// Doctor skips prescription for completed follow-up consultation
+exports.doctorSkipFollowUpPrescription = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) return res.status(404).json({ success: false, message: "Appointment not found." });
+        if (appointment.doctor_id !== req.user.id) return res.status(403).json({ success: false, message: "Access denied." });
+        if (appointment.follow_up_status !== "completed") {
+            return res.status(400).json({ success: false, message: "Follow-up consultation must be completed first." });
+        }
+
+        appointment.follow_up_prescription_status = "skipped";
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Prescription skipped for follow-up consultation.",
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error skipping prescription.", error: error.message });
+    }
+};
+
+// Doctor marks offline follow-up patient as no-show (did not visit clinic)
+exports.doctorMarkFollowUpNoShow = async (req, res) => {
+    try {
+        const appointment = await Appointment.findById(req.params.id);
+        if (!appointment) return res.status(404).json({ success: false, message: "Appointment not found." });
+        if (appointment.doctor_id !== req.user.id) return res.status(403).json({ success: false, message: "Access denied." });
+
+        if (["expired", "completed", "cancelled"].includes(appointment.follow_up_status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Follow-up consultation is already ${appointment.follow_up_status}.`
+            });
+        }
+
+        const scheduledFU = getFollowUpScheduledDateTime(appointment);
+        if (scheduledFU) {
+            const now = new Date();
+            const windowEnd = new Date(scheduledFU.getTime() + 30 * 60 * 1000);
+            if (now < scheduledFU) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Action is only allowed starting at scheduled follow-up time (${appointment.follow_up_time || ''}).`
+                });
+            }
+            if (now > windowEnd) {
+                return res.status(400).json({
+                    success: false,
+                    message: "The 30-minute window for marking follow-up no-show has expired."
+                });
+            }
+        }
+
+        const isPharmacist = appointment.booker_role === "pharmacist" || appointment.follow_up_requested_by === "pharmacist";
+        appointment.follow_up_status = "expired";
+        appointment.follow_up_expired_at = new Date();
+        appointment.follow_up_expire_reason = isPharmacist
+            ? "Follow-up meet expired because of pharmacist unavailability"
+            : "Follow-up meet expired because of patient unavailability";
+
+        await appointment.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Follow-up marked as Expired (${appointment.follow_up_expire_reason}).`,
+            appointment
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error marking follow-up patient no-show.", error: error.message });
+    }
+};
+
+// Export helper for background auto-expiration
+exports.checkAndExpireAppointments = checkAndExpireAppointments;
+
 

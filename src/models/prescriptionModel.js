@@ -67,8 +67,13 @@ const prescriptionSchema = new mongoose.Schema({
     appointment_id: {
         type: String,
         ref: "Appointment",
-        required: true,
-        unique: true      // One prescription per appointment
+        required: true
+    },
+
+    prescription_type: {
+        type: String,
+        enum: ["primary", "follow_up"],
+        default: "primary"
     },
 
     medical_record_id: {
