@@ -131,8 +131,18 @@ exports.createMedicalRecord = async (req, res) => {
             visit_date
         });
 
-        // Update appointment if primary prescription was attached
-        if (!isFollowUp && prescription && prescription.trim() !== '') {
+        // Update appointment for follow-up or primary consultation
+        if (isFollowUp) {
+            appointment.follow_up_prescription_status = "added";
+            appointment.follow_up_prescription_id = medicalRecord._id;
+            if (appointment.follow_up_status !== "completed") {
+                appointment.follow_up_status = "completed";
+            }
+            if (!appointment.follow_up_meet_time_end) {
+                appointment.follow_up_meet_time_end = new Date();
+            }
+            await appointment.save();
+        } else {
             appointment.prescription_added = true;
             appointment.status = "completed";
             if (!appointment.meet_time_end) {

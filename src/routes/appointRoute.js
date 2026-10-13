@@ -90,6 +90,8 @@ router.put("/admin/:id/cancel", authMiddleware, adminOnly, appointmentController
 
 //fetch booked slots for a specific doctor on a specific date (public API for booking modal)
 router.get("/slots/:doctorId/:date", appointmentController.getBookedSlots);
+router.get("/doctor/:doctorId/booked-slots", appointmentController.getBookedSlots);
+router.get("/doctor/:doctorId/booked-slots/:date", appointmentController.getBookedSlots);
 
 //-------------------------- follow-up routes ---------------------------------
 // doctor sets follow-up date

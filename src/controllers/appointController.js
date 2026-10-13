@@ -64,6 +64,156 @@ const parseTimeToHoursMinutes = (timeStr) => {
     return { hours, minutes };
 };
 
+// Generates multiple standard representations for a given time string (24h, 12h AM/PM with/without leading zeroes)
+const getAllTimeRepresentations = (timeStr) => {
+    if (!timeStr) return [];
+    const clean = String(timeStr).trim();
+    if (!clean) return [];
+
+    const reps = new Set([clean, clean.toLowerCase(), clean.toUpperCase()]);
+
+    let hours = 0;
+    let minutes = 0;
+    let parsed = false;
+
+    if (clean.toLowerCase().includes("am") || clean.toLowerCase().includes("pm")) {
+        const isPm = clean.toLowerCase().includes("pm");
+        const numPart = clean.replace(/(am|pm)/gi, "").trim();
+        const parts = numPart.split(":").map(Number);
+        if (!isNaN(parts[0])) {
+            let h = parts[0];
+            const m = parts[1] || 0;
+            if (isPm && h < 12) h += 12;
+            if (!isPm && h === 12) h = 0;
+            hours = h;
+            minutes = m;
+            parsed = true;
+        }
+    } else if (clean.includes(":")) {
+        const parts = clean.split(":").map(Number);
+        if (!isNaN(parts[0])) {
+            hours = parts[0];
+            minutes = parts[1] || 0;
+            parsed = true;
+        }
+    }
+
+    if (parsed) {
+        const h24 = String(hours).padStart(2, "0");
+        const m = String(minutes).padStart(2, "0");
+        const t24 = `${h24}:${m}`;
+        reps.add(t24);
+        reps.add(`${hours}:${m}`);
+
+        const h12 = hours % 12 === 0 ? 12 : hours % 12;
+        const ampm = hours >= 12 ? "PM" : "AM";
+        const h12Pad = String(h12).padStart(2, "0");
+
+        reps.add(`${h12Pad}:${m} ${ampm}`);
+        reps.add(`${h12}:${m} ${ampm}`);
+        reps.add(`${h12Pad}:${m} ${ampm.toLowerCase()}`);
+        reps.add(`${h12}:${m} ${ampm.toLowerCase()}`);
+        reps.add(`${h12Pad}:${m}${ampm}`);
+        reps.add(`${h12}:${m}${ampm}`);
+    }
+
+    return Array.from(reps);
+};
+
+// Robust date matcher covering UTC dates, local dates, and ISO string dates
+const isDateMatch = (docDate, targetY, targetM, targetD, dateStr) => {
+    if (!docDate) return false;
+    if (typeof docDate === "string") {
+        const s = docDate.trim().split("T")[0];
+        if (s === dateStr) return true;
+    }
+    const d = new Date(docDate);
+    if (isNaN(d.getTime())) return false;
+
+    if (d.getUTCFullYear() === targetY && (d.getUTCMonth() + 1) === targetM && d.getUTCDate() === targetD) {
+        return true;
+    }
+    if (d.getFullYear() === targetY && (d.getMonth() + 1) === targetM && d.getDate() === targetD) {
+        return true;
+    }
+    if (d.toISOString().slice(0, 10) === dateStr) {
+        return true;
+    }
+    return false;
+};
+
+// Checks if a given doctor slot is already occupied by a confirmed+paid appointment, accepted follow-up, or pending request
+const isSlotTaken = async (doctorId, dateInput, timeInput, excludeAppointmentId = null) => {
+    if (!doctorId || !dateInput || !timeInput) return false;
+    let dateStr = String(dateInput).trim();
+    if (dateStr.includes("T")) dateStr = dateStr.split("T")[0];
+    const [targetY, targetM, targetD] = dateStr.split("-").map(Number);
+    if (!targetY || !targetM || !targetD) return false;
+
+    const windowStart = new Date(Date.UTC(targetY, targetM - 1, targetD - 1, 0, 0, 0));
+    const windowEnd = new Date(Date.UTC(targetY, targetM - 1, targetD + 1, 23, 59, 59, 999));
+
+    const candidateReps = new Set(getAllTimeRepresentations(timeInput));
+
+    // 1. Primary appointments that are confirmed & paid OR pending doctor response
+    const primaryList = await Appointment.find({
+        doctor_id: doctorId,
+        ...(excludeAppointmentId ? { _id: { $ne: excludeAppointmentId } } : {}),
+        $and: [
+            {
+                $or: [
+                    { appointment_date: dateStr },
+                    { appointment_date: { $gte: windowStart, $lte: windowEnd } }
+                ]
+            },
+            {
+                $or: [
+                    { status: { $in: ["confirmed", "completed"] }, payment_status: "paid" },
+                    { status: "pending" }
+                ]
+            }
+        ]
+    }).select('appointment_date appointment_time');
+
+    for (const appt of primaryList) {
+        if (isDateMatch(appt.appointment_date, targetY, targetM, targetD, dateStr)) {
+            const reps = getAllTimeRepresentations(appt.appointment_time);
+            if (reps.some(r => candidateReps.has(r))) {
+                return true;
+            }
+        }
+    }
+
+    // 2. Follow-up appointments accepted by doctor (free consultation)
+    const followUpList = await Appointment.find({
+        doctor_id: doctorId,
+        ...(excludeAppointmentId ? { _id: { $ne: excludeAppointmentId } } : {}),
+        $and: [
+            {
+                $or: [
+                    { follow_up_date: dateStr },
+                    { follow_up_date: { $gte: windowStart, $lte: windowEnd } }
+                ]
+            },
+            {
+                follow_up_status: { $in: ["accepted", "completed"] }
+            }
+        ]
+    }).select('follow_up_date follow_up_time assigned_follow_up_time appointment_time');
+
+    for (const appt of followUpList) {
+        if (isDateMatch(appt.follow_up_date, targetY, targetM, targetD, dateStr)) {
+            const timeVal = appt.follow_up_time || appt.assigned_follow_up_time || appt.appointment_time;
+            const reps = getAllTimeRepresentations(timeVal);
+            if (reps.some(r => candidateReps.has(r))) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+};
+
 // Auto-expire appointments and follow-up meets whose scheduled time or meeting start window has crossed
 const checkAndExpireAppointments = async (appointments) => {
     if (!appointments) return;
@@ -294,20 +444,12 @@ exports.createAppointment = async (req, res) => {
                 message: "Doctor is not available"
             });
         }
-                const existingAppointment = await Appointment.findOne({
-                doctor_id,
-                appointment_date,
-                appointment_time,
-                status: {
-                    $in: ["pending", "confirmed"]
-                }
+        const slotTaken = await isSlotTaken(doctor_id, appointment_date, appointment_time);
+        if (slotTaken) {
+            return res.status(400).json({
+                message: "This time slot is already booked for this doctor. Please choose another time slot."
             });
-
-            if (existingAppointment) {
-                return res.status(400).json({
-                    message: "This time slot is already booked"
-                });
-            }
+        }
             const appointment = await Appointment.create({
             user_id: req.user.id,
             patient_id,
@@ -1055,42 +1197,78 @@ exports.adminCancelAppointment = async (req, res) => {
     }
 };
 
-//fetch booked slots for a specific doctor on a specific date
-//fetch booked slots for a specific doctor on a specific date (combines primary bookings and accepted follow-ups)
+// fetch booked slots for a specific doctor on a specific date (combines primary confirmed+paid bookings and accepted follow-ups)
 exports.getBookedSlots = async (req, res) => {
     try {
-        const { doctorId, date } = req.params;
-        const targetDate = req.query.date || date;
-        
-        const startOfDay = new Date(targetDate);
-        startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(targetDate);
-        endOfDay.setUTCHours(23, 59, 59, 999);
+        const doctorId = req.params.doctorId || req.params.id;
+        const targetDate = req.query.date || req.params.date;
 
-        // 1. Regular appointments
+        if (!doctorId || !targetDate) {
+            return res.status(200).json({
+                success: true,
+                bookedTimes: [],
+                booked_slots: [],
+                slots: []
+            });
+        }
+
+        let dateStr = String(targetDate).trim();
+        if (dateStr.includes("T")) {
+            dateStr = dateStr.split("T")[0];
+        }
+        const [targetY, targetM, targetD] = dateStr.split("-").map(Number);
+
+        if (!targetY || !targetM || !targetD) {
+            return res.status(200).json({
+                success: true,
+                bookedTimes: [],
+                booked_slots: [],
+                slots: []
+            });
+        }
+
+        const windowStart = new Date(Date.UTC(targetY, targetM - 1, targetD - 1, 0, 0, 0));
+        const windowEnd = new Date(Date.UTC(targetY, targetM - 1, targetD + 1, 23, 59, 59, 999));
+
+        // 1. Regular appointments confirmed by doctor AND paid by patient/pharmacist (or completed)
         const bookedPrimary = await Appointment.find({
             doctor_id: doctorId,
             $or: [
-                { appointment_date: targetDate },
-                { appointment_date: { $gte: startOfDay, $lte: endOfDay } }
+                { appointment_date: dateStr },
+                { appointment_date: { $gte: windowStart, $lte: windowEnd } }
             ],
-            status: { $in: ["pending", "confirmed"] }
-        }).select('appointment_time');
+            status: { $in: ["confirmed", "completed"] },
+            payment_status: "paid"
+        }).select('appointment_date appointment_time status payment_status');
 
-        // 2. Accepted follow-ups
+        // 2. Follow-up appointments confirmed (accepted) by doctor (free ₹0 meet)
         const bookedFollowUps = await Appointment.find({
             doctor_id: doctorId,
             $or: [
-                { follow_up_date: targetDate },
-                { follow_up_date: { $gte: startOfDay, $lte: endOfDay } }
+                { follow_up_date: dateStr },
+                { follow_up_date: { $gte: windowStart, $lte: windowEnd } }
             ],
-            follow_up_status: "accepted"
-        }).select('follow_up_time appointment_time');
+            follow_up_status: { $in: ["accepted", "completed"] }
+        }).select('follow_up_date follow_up_time assigned_follow_up_time appointment_time follow_up_status');
 
-        const times1 = bookedPrimary.map(a => a.appointment_time).filter(Boolean);
-        const times2 = bookedFollowUps.map(a => a.follow_up_time || a.appointment_time).filter(Boolean);
+        const bookedTimesSet = new Set();
 
-        const bookedTimes = [...new Set([...times1, ...times2])];
+        for (const appt of bookedPrimary) {
+            if (isDateMatch(appt.appointment_date, targetY, targetM, targetD, dateStr)) {
+                const reps = getAllTimeRepresentations(appt.appointment_time);
+                reps.forEach(t => bookedTimesSet.add(t));
+            }
+        }
+
+        for (const appt of bookedFollowUps) {
+            if (isDateMatch(appt.follow_up_date, targetY, targetM, targetD, dateStr)) {
+                const timeVal = appt.follow_up_time || appt.assigned_follow_up_time || appt.appointment_time;
+                const reps = getAllTimeRepresentations(timeVal);
+                reps.forEach(t => bookedTimesSet.add(t));
+            }
+        }
+
+        const bookedTimes = Array.from(bookedTimesSet);
 
         res.status(200).json({
             success: true,
@@ -1184,24 +1362,11 @@ exports.pharmacistBookAppointment = async (req, res) => {
         }
 
         // Check slot availability
-        const startOfDay = new Date(appointment_date);
-        startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(appointment_date);
-        endOfDay.setUTCHours(23, 59, 59, 999);
-
-        const slotTaken = await Appointment.findOne({
-            doctor_id,
-            $or: [
-                { appointment_date: appointment_date },
-                { appointment_date: { $gte: startOfDay, $lte: endOfDay } }
-            ],
-            appointment_time,
-            status: { $in: ["pending", "confirmed"] }
-        });
+        const slotTaken = await isSlotTaken(doctor_id, appointment_date, appointment_time);
         if (slotTaken) {
             return res.status(400).json({
                 success: false,
-                message: "This time slot is already booked for the selected doctor."
+                message: "This time slot is already booked for the selected doctor. Please choose another time slot."
             });
         }
 
@@ -1612,6 +1777,17 @@ exports.requestFollowUp = async (req, res) => {
             });
         }
 
+        // Prevent double booking if time slot is already booked
+        if (follow_up_time) {
+            const slotTaken = await isSlotTaken(appointment.doctor_id, targetDate, follow_up_time, appointment._id);
+            if (slotTaken) {
+                return res.status(400).json({
+                    success: false,
+                    message: "This time slot is already booked for this doctor. Please choose an available time slot."
+                });
+            }
+        }
+
         // Preserve initial assigned follow-up date if not already set
         if (!appointment.assigned_follow_up_date && appointment.follow_up_date) {
             appointment.assigned_follow_up_date = appointment.follow_up_date;
@@ -1697,6 +1873,15 @@ exports.respondFollowUp = async (req, res) => {
         }
 
         if (action === "accept") {
+            if (appointment.follow_up_date && appointment.follow_up_time) {
+                const slotTaken = await isSlotTaken(appointment.doctor_id, appointment.follow_up_date, appointment.follow_up_time, appointment._id);
+                if (slotTaken) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Cannot accept follow-up request: This time slot is already booked by another confirmed appointment."
+                    });
+                }
+            }
             appointment.follow_up_status = "accepted";
         } else if (action === "reject") {
             appointment.follow_up_status = "rejected";

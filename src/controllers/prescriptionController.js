@@ -97,7 +97,7 @@ exports.createPrescription = async (req, res) => {
                 prescription_type: "follow_up"
             });
 
-            if (existingFollowUp || appointment.follow_up_prescription_status === "added") {
+            if (existingFollowUp) {
                 return res.status(400).json({
                     success: false,
                     message: "Follow-up prescription has already been added for this appointment and cannot be modified."
@@ -375,18 +375,114 @@ exports.getPrescriptionByAppointment = async (req, res) => {
         const { appointment_id } = req.params;
         const { type } = req.query;
 
-        const query = { appointment_id };
-        if (type === "follow_up") {
-            query.prescription_type = "follow_up";
-        } else {
-            query.prescription_type = { $ne: "follow_up" };
+        const isFollowUp = type === "follow_up";
+        const appointment = await Appointment.findById(appointment_id);
+
+        let prescription = null;
+
+        if (isFollowUp) {
+            // If appointment has a follow-up prescription ID, check if it points to a Prescription
+            if (appointment && appointment.follow_up_prescription_id) {
+                prescription = await Prescription.findById(appointment.follow_up_prescription_id)
+                    .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+                    .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+                    .populate("appointment_id")
+                    .populate("medical_record_id");
+            }
+
+            if (!prescription) {
+                prescription = await Prescription.findOne({
+                    appointment_id,
+                    $or: [
+                        { prescription_type: "follow_up" },
+                        { is_follow_up: true }
+                    ]
+                })
+                .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+                .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+                .populate("appointment_id")
+                .populate("medical_record_id");
+            }
+
+            if (prescription) {
+                return res.status(200).json({
+                    success: true,
+                    prescription
+                });
+            }
+
+            // Fallback for follow-up: Check MedicalRecord
+            let medicalRecord = null;
+            if (appointment && appointment.follow_up_prescription_id) {
+                medicalRecord = await MedicalRecord.findById(appointment.follow_up_prescription_id)
+                    .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+                    .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+                    .populate("appointment_id")
+                    .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
+            }
+
+            if (!medicalRecord) {
+                medicalRecord = await MedicalRecord.findOne({
+                    appointment_id,
+                    $or: [
+                        { record_type: "follow_up" },
+                        { is_follow_up: true }
+                    ]
+                })
+                .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+                .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+                .populate("appointment_id")
+                .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
+            }
+
+            if (medicalRecord) {
+                const formattedPrescription = {
+                    _id: medicalRecord._id,
+                    appointment_id: medicalRecord.appointment_id,
+                    medical_record_id: medicalRecord._id,
+                    patient_id: medicalRecord.patient_id,
+                    doctor_id: medicalRecord.doctor_id,
+                    prescription_type: "follow_up",
+                    medicines: (medicalRecord.medicines_prescribed || []).map(m => ({
+                        medicine_id: m.medicine_id?._id || m.medicine_id,
+                        medicine_name: m.medicine_id?.medicine_name || m.medicine_name || 'Prescribed Medicine',
+                        strength: m.medicine_id?.strength || '',
+                        dosage: m.dosage || '',
+                        frequency: m.duration || '',
+                        duration: m.duration || '',
+                        instructions: ''
+                    })),
+                    general_instructions: medicalRecord.doctor_notes || medicalRecord.prescription || '',
+                    follow_up_date: medicalRecord.follow_up_date,
+                    prescribed_date: medicalRecord.visit_date || medicalRecord.createdAt,
+                    status: 'completed',
+                    diagnosis: medicalRecord.diagnosis,
+                    symptoms: medicalRecord.symptoms,
+                    isMedicalRecordFallback: true
+                };
+
+                return res.status(200).json({
+                    success: true,
+                    prescription: formattedPrescription,
+                    isMedicalRecordFallback: true
+                });
+            }
+
+            return res.status(404).json({
+                success: false,
+                message: "Follow-up prescription or consultation record not found for this appointment."
+            });
         }
 
-        const prescription = await Prescription.findOne(query)
-            .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
-            .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
-            .populate("appointment_id")
-            .populate("medical_record_id");
+        // Primary Consultation Prescription
+        prescription = await Prescription.findOne({
+            appointment_id,
+            prescription_type: { $ne: "follow_up" }
+        })
+        .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+        .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+        .populate("appointment_id")
+        .populate("medical_record_id");
 
         if (prescription) {
             return res.status(200).json({
@@ -395,19 +491,15 @@ exports.getPrescriptionByAppointment = async (req, res) => {
             });
         }
 
-        if (type === "follow_up") {
-            return res.status(404).json({
-                success: false,
-                message: "Follow-up prescription not found for this appointment."
-            });
-        }
-
-        // Fallback: Check if a MedicalRecord exists for this appointment
-        const medicalRecord = await MedicalRecord.findOne({ appointment_id })
-            .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
-            .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
-            .populate("appointment_id")
-            .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
+        // Fallback for primary consultation: Check MedicalRecord
+        const medicalRecord = await MedicalRecord.findOne({
+            appointment_id,
+            record_type: { $ne: "follow_up" }
+        })
+        .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+        .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+        .populate("appointment_id")
+        .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
 
         if (medicalRecord) {
             const formattedPrescription = {
@@ -416,9 +508,10 @@ exports.getPrescriptionByAppointment = async (req, res) => {
                 medical_record_id: medicalRecord._id,
                 patient_id: medicalRecord.patient_id,
                 doctor_id: medicalRecord.doctor_id,
+                prescription_type: "primary",
                 medicines: (medicalRecord.medicines_prescribed || []).map(m => ({
                     medicine_id: m.medicine_id?._id || m.medicine_id,
-                    medicine_name: m.medicine_id?.medicine_name || 'Prescribed Medicine',
+                    medicine_name: m.medicine_id?.medicine_name || m.medicine_name || 'Prescribed Medicine',
                     strength: m.medicine_id?.strength || '',
                     dosage: m.dosage || '',
                     frequency: m.duration || '',
@@ -430,7 +523,8 @@ exports.getPrescriptionByAppointment = async (req, res) => {
                 prescribed_date: medicalRecord.visit_date || medicalRecord.createdAt,
                 status: 'completed',
                 diagnosis: medicalRecord.diagnosis,
-                symptoms: medicalRecord.symptoms
+                symptoms: medicalRecord.symptoms,
+                isMedicalRecordFallback: true
             };
 
             return res.status(200).json({
@@ -455,27 +549,100 @@ exports.getPrescriptionByAppointment = async (req, res) => {
 
 // Get single prescription
 exports.getPrescriptionDetails = async (req, res) => {
-
     try {
-
         const { prescription_id } = req.params;
 
-        const prescription = await Prescription.findById(prescription_id)
+        let prescription = await Prescription.findById(prescription_id)
             .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
             .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
             .populate("appointment_id")
             .populate("medical_record_id");
 
+        // Fallback 1: If not in Prescription, check MedicalRecord by ID
         if (!prescription) {
+            const medicalRecord = await MedicalRecord.findById(prescription_id)
+                .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+                .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+                .populate("appointment_id")
+                .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
 
+            if (medicalRecord) {
+                prescription = {
+                    _id: medicalRecord._id,
+                    appointment_id: medicalRecord.appointment_id,
+                    medical_record_id: medicalRecord._id,
+                    patient_id: medicalRecord.patient_id,
+                    doctor_id: medicalRecord.doctor_id,
+                    prescription_type: medicalRecord.record_type || (medicalRecord.is_follow_up ? "follow_up" : "primary"),
+                    medicines: (medicalRecord.medicines_prescribed || []).map(m => ({
+                        medicine_id: m.medicine_id?._id || m.medicine_id,
+                        medicine_name: m.medicine_id?.medicine_name || m.medicine_name || 'Prescribed Medicine',
+                        strength: m.medicine_id?.strength || '',
+                        dosage: m.dosage || '',
+                        frequency: m.duration || '',
+                        duration: m.duration || '',
+                        instructions: ''
+                    })),
+                    general_instructions: medicalRecord.doctor_notes || medicalRecord.prescription || '',
+                    follow_up_date: medicalRecord.follow_up_date,
+                    prescribed_date: medicalRecord.visit_date || medicalRecord.createdAt,
+                    status: 'completed',
+                    diagnosis: medicalRecord.diagnosis,
+                    symptoms: medicalRecord.symptoms,
+                    isMedicalRecordFallback: true
+                };
+            }
+        }
+
+        // Fallback 2: If prescription_id is an appointment ID string (starts with APPOINTMENT)
+        if (!prescription && String(prescription_id).startsWith("APPOINTMENT")) {
+            prescription = await Prescription.findOne({ appointment_id: prescription_id })
+                .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+                .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+                .populate("appointment_id")
+                .populate("medical_record_id");
+
+            if (!prescription) {
+                const medRec = await MedicalRecord.findOne({ appointment_id: prescription_id })
+                    .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+                    .populate("patient_id", "first_name last_name dob gender age blood_group phone email address")
+                    .populate("appointment_id")
+                    .populate("medicines_prescribed.medicine_id", "medicine_name strength category");
+
+                if (medRec) {
+                    prescription = {
+                        _id: medRec._id,
+                        appointment_id: medRec.appointment_id,
+                        medical_record_id: medRec._id,
+                        patient_id: medRec.patient_id,
+                        doctor_id: medRec.doctor_id,
+                        prescription_type: medRec.record_type || (medRec.is_follow_up ? "follow_up" : "primary"),
+                        medicines: (medRec.medicines_prescribed || []).map(m => ({
+                            medicine_id: m.medicine_id?._id || m.medicine_id,
+                            medicine_name: m.medicine_id?.medicine_name || m.medicine_name || 'Prescribed Medicine',
+                            strength: m.medicine_id?.strength || '',
+                            dosage: m.dosage || '',
+                            frequency: m.duration || '',
+                            duration: m.duration || '',
+                            instructions: ''
+                        })),
+                        general_instructions: medRec.doctor_notes || medRec.prescription || '',
+                        follow_up_date: medRec.follow_up_date,
+                        prescribed_date: medRec.visit_date || medRec.createdAt,
+                        status: 'completed',
+                        diagnosis: medRec.diagnosis,
+                        symptoms: medRec.symptoms,
+                        isMedicalRecordFallback: true
+                    };
+                }
+            }
+        }
+
+        if (!prescription) {
             return res.status(404).json({
-
                 success: false,
-
                 message: "Prescription not found."
-
             });
-
         }
 
         // Doctor can view only own prescriptions
@@ -483,70 +650,49 @@ exports.getPrescriptionDetails = async (req, res) => {
             req.user.role === "doctor" &&
             String(prescription.doctor_id?._id || prescription.doctor_id) !== String(req.user.id)
         ) {
-
             return res.status(403).json({
-
                 success: false,
-
                 message: "Access denied."
-
             });
-
         }
 
-        // Patient(User) can view only prescriptions
-// belonging to their own patient profiles
+        // Patient(User) can view prescriptions belonging to their own patient profiles or appointments
+        if (req.user.role === "user") {
+            const patientId = prescription.patient_id?._id || prescription.patient_id;
+            const apptUserId = prescription.appointment_id?.user_id?._id || prescription.appointment_id?.user_id;
 
-if (req.user.role === "user") {
+            let allowed = false;
+            if (apptUserId && String(apptUserId) === String(req.user.id)) {
+                allowed = true;
+            }
+            if (!allowed && patientId) {
+                const patient = await Patient.findOne({
+                    user_id: req.user.id,
+                    _id: patientId
+                });
+                if (patient) allowed = true;
+            }
 
-    const patient = await Patient.findOne({
+            if (!allowed) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied."
+                });
+            }
+        }
 
-        user_id: req.user.id,
-
-        _id: prescription.patient_id
-
-    });
-
-    if (!patient) {
-
-        return res.status(403).json({
-
-            success: false,
-
-            message: "Access denied."
-
-        });
-
-    }
-
-}
-
-        // Admin can view any prescription
-
+        // Pharmacist and Admin can view any prescription
         return res.status(200).json({
-
             success: true,
-
             prescription
-
         });
-
-    }
-
-    catch (error) {
-
+    } catch (error) {
         return res.status(500).json({
-
             success: false,
-
             message: "Failed to fetch prescription.",
-
             error: error.message
-
         });
-
     }
-
 };
 
 // Update Prescription
@@ -569,105 +715,162 @@ exports.updatePrescription = async (req, res) => {
 
 // Get logged-in user's prescriptions
 exports.getMyPatientPrescriptions = async (req, res) => {
-
     try {
-
         const user_id = req.user.id;
 
         // Find all patients linked to the user
-        const patients = await Patient.find({
-
-            user_id
-
-        }).select("_id");
-
+        const patients = await Patient.find({ user_id }).select("_id");
         const patientIds = patients.map(patient => patient._id);
 
+        // Also find all appointments booked by the user
+        const userAppointments = await Appointment.find({ user_id }).select("_id");
+        const userApptIds = userAppointments.map(a => a._id);
+
         const prescriptions = await Prescription.find({
-
-            patient_id: { $in: patientIds }
-
+            $or: [
+                { patient_id: { $in: patientIds } },
+                { appointment_id: { $in: userApptIds } }
+            ]
         })
         .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
         .populate("patient_id", "first_name last_name dob age gender phone email address blood_group")
         .populate("appointment_id")
         .populate("medical_record_id")
-        .sort({
+        .sort({ prescribed_date: -1 })
+        .lean();
 
-            prescribed_date: -1
+        // Include standalone MedicalRecords for this user's patients or appointments
+        const standaloneRecords = await MedicalRecord.find({
+            $or: [
+                { patient_id: { $in: patientIds } },
+                { appointment_id: { $in: userApptIds } }
+            ]
+        })
+        .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+        .populate("patient_id", "first_name last_name dob age gender phone email address blood_group")
+        .populate("appointment_id")
+        .populate("medicines_prescribed.medicine_id", "medicine_name strength category")
+        .lean();
 
-        });
+        for (const mr of standaloneRecords) {
+            const aId = String(mr.appointment_id?._id || mr.appointment_id);
+            const isFollowUp = mr.record_type === 'follow_up' || mr.is_follow_up;
+            const alreadyExists = prescriptions.some(p => {
+                const pApptId = String(p.appointment_id?._id || p.appointment_id);
+                const pIsFollowUp = p.prescription_type === 'follow_up' || p.is_follow_up;
+                return pApptId === aId && (Boolean(isFollowUp) === Boolean(pIsFollowUp));
+            });
+
+            if (!alreadyExists) {
+                prescriptions.push({
+                    _id: mr._id,
+                    appointment_id: mr.appointment_id,
+                    medical_record_id: mr._id,
+                    patient_id: mr.patient_id,
+                    doctor_id: mr.doctor_id,
+                    prescription_type: isFollowUp ? 'follow_up' : 'primary',
+                    medicines: (mr.medicines_prescribed || []).map(m => ({
+                        medicine_id: m.medicine_id?._id || m.medicine_id,
+                        medicine_name: m.medicine_id?.medicine_name || m.medicine_name || 'Prescribed Medicine',
+                        strength: m.medicine_id?.strength || '',
+                        dosage: m.dosage || '',
+                        frequency: m.duration || '',
+                        duration: m.duration || '',
+                        instructions: ''
+                    })),
+                    general_instructions: mr.doctor_notes || mr.prescription || '',
+                    follow_up_date: mr.follow_up_date,
+                    prescribed_date: mr.visit_date || mr.createdAt,
+                    status: 'completed',
+                    diagnosis: mr.diagnosis,
+                    symptoms: mr.symptoms,
+                    isMedicalRecordFallback: true
+                });
+            }
+        }
 
         return res.status(200).json({
-
             success: true,
-
             total_prescriptions: prescriptions.length,
-
             prescriptions
-
         });
-
-    }
-
-    catch (error) {
-
+    } catch (error) {
         return res.status(500).json({
-
             success: false,
-
             message: "Failed to fetch prescriptions.",
-
             error: error.message
-
         });
-
     }
-
 };
 
-// -----------------------------admin side -----------------------------------------------------
+// -----------------------------admin / pharmacist side -----------------------------------------
 
-// Get all prescriptions (Admin)
+// Get all prescriptions (Admin / Pharmacist)
 exports.getAllPrescriptions = async (req, res) => {
-
     try {
-
         const prescriptions = await Prescription.find()
             .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
             .populate("patient_id", "first_name last_name dob age gender phone email address blood_group")
             .populate("appointment_id")
             .populate("medical_record_id")
-            .sort({
+            .sort({ prescribed_date: -1 })
+            .lean();
 
-                prescribed_date: -1
+        // Also include standalone MedicalRecords that do not have an entry in Prescription
+        const standaloneRecords = await MedicalRecord.find()
+            .populate("doctor_id", "first_name last_name specialization department email phone visit_address signature profile_img")
+            .populate("patient_id", "first_name last_name dob age gender phone email address blood_group")
+            .populate("appointment_id")
+            .populate("medicines_prescribed.medicine_id", "medicine_name strength category")
+            .lean();
 
+        for (const mr of standaloneRecords) {
+            const aId = String(mr.appointment_id?._id || mr.appointment_id);
+            const isFollowUp = mr.record_type === 'follow_up' || mr.is_follow_up;
+            const alreadyExists = prescriptions.some(p => {
+                const pApptId = String(p.appointment_id?._id || p.appointment_id);
+                const pIsFollowUp = p.prescription_type === 'follow_up' || p.is_follow_up;
+                return pApptId === aId && (Boolean(isFollowUp) === Boolean(pIsFollowUp));
             });
 
+            if (!alreadyExists) {
+                prescriptions.push({
+                    _id: mr._id,
+                    appointment_id: mr.appointment_id,
+                    medical_record_id: mr._id,
+                    patient_id: mr.patient_id,
+                    doctor_id: mr.doctor_id,
+                    prescription_type: isFollowUp ? 'follow_up' : 'primary',
+                    medicines: (mr.medicines_prescribed || []).map(m => ({
+                        medicine_id: m.medicine_id?._id || m.medicine_id,
+                        medicine_name: m.medicine_id?.medicine_name || m.medicine_name || 'Prescribed Medicine',
+                        strength: m.medicine_id?.strength || '',
+                        dosage: m.dosage || '',
+                        frequency: m.duration || '',
+                        duration: m.duration || '',
+                        instructions: ''
+                    })),
+                    general_instructions: mr.doctor_notes || mr.prescription || '',
+                    follow_up_date: mr.follow_up_date,
+                    prescribed_date: mr.visit_date || mr.createdAt,
+                    status: 'completed',
+                    diagnosis: mr.diagnosis,
+                    symptoms: mr.symptoms,
+                    isMedicalRecordFallback: true
+                });
+            }
+        }
+
         return res.status(200).json({
-
             success: true,
-
             total_prescriptions: prescriptions.length,
-
             prescriptions
-
         });
-
-    }
-
-    catch (error) {
-
+    } catch (error) {
         return res.status(500).json({
-
             success: false,
-
             message: "Failed to fetch prescriptions.",
-
             error: error.message
-
         });
-
     }
-
 };
